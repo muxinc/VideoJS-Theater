@@ -1,0 +1,20 @@
+{
+  "name": "zigit-webgpu-world",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "wasm:sync": "zig build wasm && node scripts/sync-wasm.mjs",
+    "dev": "npm run wasm:sync && vite --config web/vite.config.js",
+    "build": "npm run wasm:sync && vite build --config web/vite.config.js",
+    "preview": "vite preview --config web/vite.config.js"
+  },
+  "dependencies": {
+    "@videojs/react": "next",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "three": "^0.179.1"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0"
+  }
+}

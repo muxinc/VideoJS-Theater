@@ -1,0 +1,1 @@
+{"version":3,"file":"index.parts.js","names":[],"sources":["../../../../src/ui/time/index.parts.ts"],"sourcesContent":["export { Group, type GroupProps } from './time-group';\nexport { Separator, type SeparatorProps } from './time-separator';\nexport { Value, type ValueProps } from './time-value';\n"],"mappings":""}

@@ -1,0 +1,19 @@
+.vjs-frosted {
+  --vjs-frosted-bg: rgba(12, 30, 48, 0.68);
+  --vjs-frosted-accent: #a9d5f5;
+}
+
+.vjs-frosted .vjs-control-bar {
+  background: linear-gradient(180deg, rgba(5, 12, 20, 0.1) 0%, var(--vjs-frosted-bg) 100%);
+  backdrop-filter: blur(8px);
+}
+
+.vjs-frosted .vjs-big-play-button {
+  border: 1px solid rgba(210, 235, 250, 0.38);
+  background: rgba(18, 43, 63, 0.54);
+}
+
+.vjs-frosted .vjs-play-progress,
+.vjs-frosted .vjs-volume-level {
+  background-color: var(--vjs-frosted-accent);
+}
