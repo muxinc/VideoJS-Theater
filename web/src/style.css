@@ -35,6 +35,49 @@ body {
   display: block;
 }
 
+#crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2.4rem;
+  height: 2.4rem;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+
+#crosshair span {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  background: rgba(239, 246, 252, 0.88);
+  box-shadow: 0 0 16px rgba(5, 14, 22, 0.35);
+  transition:
+    background 120ms ease,
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+#crosshair span:first-child {
+  width: 1.1rem;
+  height: 0.14rem;
+}
+
+#crosshair span:last-child {
+  width: 0.14rem;
+  height: 1.1rem;
+}
+
+#crosshair[data-state="targetable"] span {
+  background: rgba(255, 216, 127, 0.95);
+  transform: scale(1.08);
+}
+
+#crosshair[data-state="held"] span {
+  background: rgba(158, 255, 204, 0.95);
+}
+
 .panel {
   position: absolute;
   top: 1rem;

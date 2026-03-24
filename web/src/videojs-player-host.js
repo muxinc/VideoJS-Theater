@@ -38,6 +38,29 @@ function configureVideoElement(videoElement, src, poster) {
   }
 }
 
+export function changeVideoSource(videoElement, src, poster) {
+  if (!videoElement) return;
+  videoElement.pause();
+  videoElement.removeAttribute("src");
+  videoElement.load();
+
+  if (poster) {
+    videoElement.poster = poster;
+  }
+  videoElement.src = src;
+  videoElement.load();
+
+  videoElement.crossOrigin = "anonymous";
+  videoElement.playsInline = true;
+  videoElement.loop = true;
+  videoElement.muted = false;
+
+  const playPromise = videoElement.play();
+  if (playPromise) {
+    playPromise.catch(() => {});
+  }
+}
+
 export async function mountHiddenVideoJsPlayer(options = {}) {
   const {
     containerId = "videojs-player-root",

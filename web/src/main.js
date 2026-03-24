@@ -1,14 +1,65 @@
-import { mountHiddenVideoJsPlayer } from "./videojs-player-host.js";
+import { mountHiddenVideoJsPlayer, changeVideoSource } from "./videojs-player-host.js";
 import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import "./style.css";
 
 const canvas = document.getElementById("scene");
 const statusEl = document.getElementById("status");
 const telemetryEl = document.getElementById("telemetry");
+const crosshairEl = document.getElementById("crosshair");
 const cursorLockButton = document.getElementById("cursor-lock");
 const playButton = document.getElementById("video-play");
 const pauseButton = document.getElementById("video-pause");
+
+const TAPE_PICKUP_RADIUS = 2.25;
+const TAPE_PICKUP_DOT_THRESHOLD = 0.96;
+const TAPE_HOLD_OFFSET = {
+  right: 0.38,
+  up: -0.22,
+  forward: 1.05,
+};
+const TAPE_HOLD_YAW_OFFSET = -0.35;
+const TAPE_DROP_DISTANCE = 1.5;
+
+const VCR_INSERT_RADIUS = 2.5;
+const VCR_INSERT_DOT_THRESHOLD = 0.9;
+const VCR_POSITION = new THREE.Vector3(0.0, 0.0, -6.75);
+
+const TAPE_VIDEO_DATA = {
+  playbackId: "9iUYcsVCtyyWdPfHFsJNreL3j01K2V1xizq4ZcYHwXQs",
+  get src() {
+    return `https://stream.mux.com/${this.playbackId}.m3u8`;
+  },
+  get poster() {
+    return `https://image.mux.com/${this.playbackId}/storyboard.png`;
+  },
+  title: "Demo Reel",
+};
+
+const BOOMBOX_MODEL_CONFIG = {
+  url: "/BoomBox.fbx",
+  targetMaxDim: 2.2,
+  rotation: new THREE.Euler(0.0, -0.22 * Math.PI, 0.0),
+  position: new THREE.Vector3(3.8, 0.0, -9.15),
+  floorOffset: 0.03,
+};
+
+const TAPE_MODEL_CONFIG = {
+  url: "/tape.glb",
+  targetMaxDim: 2.2,
+  rotation: new THREE.Euler(0.0, 0.18 * Math.PI, 0.0),
+  position: new THREE.Vector3(-5.0, 0.0, -9.25),
+  floorOffset: 0.03,
+};
+
+const PLAYER_MODEL_CONFIG = {
+  url: "/player.glb",
+  targetMaxDim: 1.7,
+  rotation: new THREE.Euler(0.0, 0.0, 0.0),
+  position: new THREE.Vector3(0.0, 0.0, -6.75),
+  floorOffset: 0.03,
+};
 
 if (!navigator.gpu) {
   statusEl.textContent = "WebGPU is not available in this browser.";
@@ -16,6 +67,8 @@ if (!navigator.gpu) {
 }
 
 const decoder = new TextDecoder();
+let baseStatusMessage = "Booting...";
+let contextualStatusMessage = "";
 
 function readBytes(memory, ptr, len) {
   return new Uint8Array(memory.buffer, ptr, len);
@@ -119,7 +172,7 @@ function createDepthTexture(device, width, height) {
   });
 }
 
-function getGrassFloorShaderCode() {
+function getWoodFloorShaderCode() {
   return /* wgsl */ `
 struct Camera {
   view_proj: mat4x4<f32>,
@@ -170,17 +223,17 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let normal_ws = normalize(vec3<f32>(tangent_normal.x, tangent_normal.z, tangent_normal.y));
 
   let roughness = clamp(textureSample(floor_roughness_tex, floor_sampler, uv).r + floor_material.roughness_bias, 0.04, 1.0);
-  let sun_dir = normalize(vec3<f32>(0.35, 1.0, 0.2));
+  let sun_dir = normalize(vec3<f32>(0.25, 1.0, 0.15));
   let view_dir = normalize(vec3<f32>(0.0, 1.0, 0.0));
   let ndotl = max(dot(normal_ws, sun_dir), 0.0);
   let half_vec = normalize(sun_dir + view_dir);
 
-  let spec_power = mix(96.0, 12.0, roughness);
-  let specular = pow(max(dot(normal_ws, half_vec), 0.0), spec_power) * (1.0 - roughness) * 0.12;
+  let spec_power = mix(128.0, 24.0, roughness);
+  let specular = pow(max(dot(normal_ws, half_vec), 0.0), spec_power) * (1.0 - roughness) * 0.18;
   let hemi = clamp(normal_ws.y * 0.5 + 0.5, 0.0, 1.0);
-  let ambient = mix(vec3<f32>(0.07, 0.09, 0.06), vec3<f32>(0.19, 0.28, 0.2), hemi);
+  let ambient = mix(vec3<f32>(0.08, 0.06, 0.04), vec3<f32>(0.22, 0.18, 0.13), hemi);
 
-  let color = albedo * (0.22 + 0.78 * ndotl) + albedo * ambient * 0.55 + vec3<f32>(specular);
+  let color = albedo * (0.25 + 0.75 * ndotl) + albedo * ambient * 0.5 + vec3<f32>(specular);
   return vec4<f32>(color, 1.0);
 }
 `;
@@ -191,81 +244,176 @@ function hash2D(x, y, seed) {
   return value - Math.floor(value);
 }
 
-function sampleGrassHeight(x, y, size) {
-  const xf = x / size;
-  const yf = y / size;
-  const broad = 0.5 + 0.5 * Math.sin(xf * 8.0 + yf * 3.2);
-  const patches = 0.5 + 0.5 * Math.sin(xf * 31.0 - yf * 23.0);
-  const grainA = hash2D(x, y, 1.9);
-  const grainB = hash2D(x * 2.0, y * 2.0, 7.4);
-  return broad * 0.45 + patches * 0.35 + grainA * 0.15 + grainB * 0.05;
-}
-
 function wrapIndex(value, size) {
   const wrapped = value % size;
   return wrapped < 0 ? wrapped + size : wrapped;
 }
 
-function createGrassFloorTextures(device, size = 256) {
+// Attempt a smooth value noise for coherent grain lines
+function smoothNoise(x, y, seed) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  // Smoothstep interpolation
+  const sx = fx * fx * (3.0 - 2.0 * fx);
+  const sy = fy * fy * (3.0 - 2.0 * fy);
+  const a = hash2D(ix, iy, seed);
+  const b = hash2D(ix + 1, iy, seed);
+  const c = hash2D(ix, iy + 1, seed);
+  const d = hash2D(ix + 1, iy + 1, seed);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+
+// Fractal brownian motion -- stacks smooth noise at multiple scales
+function fbm(x, y, seed, octaves = 4) {
+  let value = 0.0;
+  let amplitude = 0.5;
+  let frequency = 1.0;
+  for (let i = 0; i < octaves; i++) {
+    value += amplitude * smoothNoise(x * frequency, y * frequency, seed + i * 31.7);
+    amplitude *= 0.5;
+    frequency *= 2.0;
+  }
+  return value;
+}
+
+function createWoodFloorTextures(device, size = 512) {
   const pixelCount = size * size;
   const heightData = new Float32Array(pixelCount);
   const albedoData = new Uint8Array(pixelCount * 4);
   const normalData = new Uint8Array(pixelCount * 4);
   const roughnessData = new Uint8Array(pixelCount);
 
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      heightData[y * size + x] = sampleGrassHeight(x, y, size);
+  // Plank layout: 6 planks running horizontally, staggered end-joints
+  const PLANK_COUNT = 6;
+  const plankH = size / PLANK_COUNT;
+  // Each plank has 2 end-joints (splits along X) at staggered positions
+  const plankSeeds = [];
+  for (let i = 0; i < PLANK_COUNT; i++) {
+    plankSeeds.push({
+      grainSeed: 1.0 + i * 7.3,
+      colorShift: hash2D(i, 0, 42.1),       // per-plank color variation
+      grainOffset: hash2D(i, 1, 88.3) * 20,  // offset grain phase per plank
+      // Staggered end-joints: each row's splits are offset from the previous
+      jointX: Math.floor(size * (0.3 + hash2D(i, 2, 55.0) * 0.4)),
+    });
+  }
+
+  const SEAM_WIDTH = Math.max(1, Math.round(size * 0.004));  // ~2px at 512
+  const JOINT_WIDTH = Math.max(1, Math.round(size * 0.003)); // ~1-2px
+
+  // Generate height/grain data
+  for (let py = 0; py < size; py++) {
+    const plankIdx = Math.min(Math.floor(py / plankH), PLANK_COUNT - 1);
+    const plank = plankSeeds[plankIdx];
+
+    for (let px = 0; px < size; px++) {
+      const u = px / size;
+      const v = py / size;
+
+      // Grain runs along x, with gentle waviness from fbm
+      const warp = fbm(u * 3.0, v * 2.0, plank.grainSeed, 3) * 0.4;
+      const grainCoord = v * 40.0 + plank.grainOffset + warp;
+
+      // Primary grain: smooth sine-based rings
+      const grain = 0.5 + 0.5 * Math.sin(grainCoord);
+      // Secondary finer grain
+      const fineGrain = 0.5 + 0.5 * Math.sin(grainCoord * 3.7 + u * 8.0);
+      // Subtle noise for micro-texture
+      const microNoise = smoothNoise(px * 0.08, py * 0.08, plank.grainSeed + 100);
+
+      // Occasional knot
+      const knotCx = size * (0.2 + hash2D(plankIdx, 3, 19.0) * 0.6);
+      const knotCy = plankIdx * plankH + plankH * (0.3 + hash2D(plankIdx, 4, 23.0) * 0.4);
+      const knotDist = Math.hypot(px - knotCx, (py - knotCy) * 1.5) / (size * 0.03);
+      const knot = Math.max(0, 1.0 - knotDist);
+      const knotRings = knot > 0.01 ? 0.5 + 0.5 * Math.sin(knotDist * 12.0) : 0;
+
+      const h = grain * 0.45 + fineGrain * 0.25 + microNoise * 0.15 + knotRings * knot * 0.15;
+      heightData[py * size + px] = h;
     }
   }
 
-  for (let y = 0; y < size; y += 1) {
-    const yDown = wrapIndex(y - 1, size);
-    const yUp = wrapIndex(y + 1, size);
-    for (let x = 0; x < size; x += 1) {
-      const xLeft = wrapIndex(x - 1, size);
-      const xRight = wrapIndex(x + 1, size);
+  // Generate albedo, normals, roughness
+  for (let py = 0; py < size; py++) {
+    const plankIdx = Math.min(Math.floor(py / plankH), PLANK_COUNT - 1);
+    const plank = plankSeeds[plankIdx];
+    const plankLocalY = (py % plankH);
+    const yDown = wrapIndex(py - 1, size);
+    const yUp = wrapIndex(py + 1, size);
 
-      const idx = y * size + x;
+    for (let px = 0; px < size; px++) {
+      const xLeft = wrapIndex(px - 1, size);
+      const xRight = wrapIndex(px + 1, size);
+      const idx = py * size + px;
       const idx4 = idx * 4;
 
       const h = heightData[idx];
-      const hLeft = heightData[y * size + xLeft];
-      const hRight = heightData[y * size + xRight];
-      const hDown = heightData[yDown * size + x];
-      const hUp = heightData[yUp * size + x];
+      const hLeft = heightData[py * size + xLeft];
+      const hRight = heightData[py * size + xRight];
+      const hDown = heightData[yDown * size + px];
+      const hUp = heightData[yUp * size + px];
 
-      const variation = hash2D(x, y, 3.7);
-      const patch = 0.5 + 0.5 * Math.sin((x + y) * 0.08 + h * 7.0);
+      // Seam detection: horizontal seams between planks
+      const isHSeam = plankLocalY < SEAM_WIDTH || plankLocalY >= (plankH - SEAM_WIDTH);
+      // Vertical end-joints per plank
+      const jointDist = Math.abs(px - plank.jointX);
+      const isVJoint = jointDist < JOINT_WIDTH;
+      const isSeam = isHSeam || isVJoint;
 
-      const red = 26 + h * 36 + variation * 10;
-      const green = 88 + h * 120 + patch * 20;
-      const blue = 22 + h * 28 + variation * 8;
+      // Per-plank base wood colors (warm brown spectrum)
+      const shift = plank.colorShift;
+      // Darker planks: reddish-brown, lighter planks: honey/amber
+      const baseR = 130 + shift * 45 + h * 40;
+      const baseG = 85 + shift * 30 + h * 28;
+      const baseB = 48 + shift * 15 + h * 15;
 
-      albedoData[idx4 + 0] = Math.max(0, Math.min(255, Math.round(red)));
-      albedoData[idx4 + 1] = Math.max(0, Math.min(255, Math.round(green)));
-      albedoData[idx4 + 2] = Math.max(0, Math.min(255, Math.round(blue)));
+      // Knot darkening
+      const knotCx = size * (0.2 + hash2D(plankIdx, 3, 19.0) * 0.6);
+      const knotCy = plankIdx * plankH + plankH * (0.3 + hash2D(plankIdx, 4, 23.0) * 0.4);
+      const knotDist = Math.hypot(px - knotCx, (py - knotCy) * 1.5) / (size * 0.035);
+      const knotDarken = Math.max(0, 1.0 - knotDist);
+      const knotMul = 1.0 - knotDarken * 0.35;
+
+      let r, g, b;
+      if (isSeam) {
+        // Seams are darker, slightly cooler
+        r = baseR * 0.35;
+        g = baseG * 0.3;
+        b = baseB * 0.35;
+      } else {
+        r = baseR * knotMul;
+        g = baseG * knotMul;
+        b = baseB * knotMul;
+      }
+
+      albedoData[idx4 + 0] = Math.max(0, Math.min(255, Math.round(r)));
+      albedoData[idx4 + 1] = Math.max(0, Math.min(255, Math.round(g)));
+      albedoData[idx4 + 2] = Math.max(0, Math.min(255, Math.round(b)));
       albedoData[idx4 + 3] = 255;
 
+      // Normal map
       const slopeX = hRight - hLeft;
       const slopeY = hUp - hDown;
-      const nx = -slopeX * 2.2;
-      const ny = -slopeY * 2.2;
+      const seamBump = isSeam ? 0.6 : 0.0;
+      const nx = -slopeX * 1.6;
+      const ny = -slopeY * 1.6 - seamBump;
       const nz = 1.0;
       const normalLen = Math.hypot(nx, ny, nz) || 1.0;
-      const tx = nx / normalLen;
-      const ty = ny / normalLen;
-      const tz = nz / normalLen;
-
-      normalData[idx4 + 0] = Math.round((tx * 0.5 + 0.5) * 255.0);
-      normalData[idx4 + 1] = Math.round((ty * 0.5 + 0.5) * 255.0);
-      normalData[idx4 + 2] = Math.round((tz * 0.5 + 0.5) * 255.0);
+      normalData[idx4 + 0] = Math.round(((nx / normalLen) * 0.5 + 0.5) * 255);
+      normalData[idx4 + 1] = Math.round(((ny / normalLen) * 0.5 + 0.5) * 255);
+      normalData[idx4 + 2] = Math.round(((nz / normalLen) * 0.5 + 0.5) * 255);
       normalData[idx4 + 3] = 255;
 
-      const roughness = 0.52 + (1.0 - h) * 0.3 + variation * 0.12;
-      roughnessData[idx] = Math.round(
-        Math.max(0, Math.min(1, roughness)) * 255.0,
-      );
+      // Roughness: seams rougher, polished wood smoother, knots rougher
+      let roughness;
+      if (isSeam) {
+        roughness = 0.75;
+      } else {
+        roughness = 0.25 + h * 0.15 + knotDarken * 0.2;
+      }
+      roughnessData[idx] = Math.round(Math.max(0, Math.min(1, roughness)) * 255);
     }
   }
 
@@ -329,7 +477,19 @@ function uploadBuffer(device, values, usage) {
 }
 
 function status(message) {
-  statusEl.textContent = message;
+  baseStatusMessage = message;
+  renderStatus();
+}
+
+function setContextStatus(message) {
+  contextualStatusMessage = message;
+  renderStatus();
+}
+
+function renderStatus() {
+  statusEl.textContent = contextualStatusMessage
+    ? `${baseStatusMessage} ${contextualStatusMessage}`
+    : baseStatusMessage;
 }
 
 function createArchBannerVertices() {
@@ -416,11 +576,42 @@ function createArchTextTexture(device) {
   return texture;
 }
 
-async function loadBoomBoxVertices() {
-  const loader = new FBXLoader();
-  const root = await loader.loadAsync("/BoomBox.fbx");
+function getLoadedRoot(loaded) {
+  if (loaded instanceof THREE.Object3D) {
+    return loaded;
+  }
+  if (loaded?.scene instanceof THREE.Object3D) {
+    return loaded.scene;
+  }
+  throw new Error("Loaded asset did not contain a scene graph");
+}
 
-  // Normalize model size so different FBX unit scales still appear in scene.
+async function loadStaticModelVertices({
+  loader,
+  url,
+  targetMaxDim,
+  rotation,
+  position,
+  floorOffset = 0.03,
+}) {
+  const mesh = await loadModelMesh({
+    loader,
+    url,
+    targetMaxDim,
+    floorOffset,
+  });
+  return {
+    vertices: bakeModelVertices(mesh.vertices, position, rotation),
+    scale: mesh.scale,
+    maxDim: mesh.maxDim,
+  };
+}
+
+async function loadModelMesh({ loader, url, targetMaxDim, floorOffset = 0.03 }) {
+  const loaded = await loader.loadAsync(url);
+  const root = getLoadedRoot(loaded);
+
+  // Normalize model size so different source unit scales still appear in scene.
   root.position.set(0.0, 0.0, 0.0);
   root.rotation.set(0.0, 0.0, 0.0);
   root.scale.setScalar(1.0);
@@ -428,23 +619,38 @@ async function loadBoomBoxVertices() {
   const rawBox = new THREE.Box3().setFromObject(root);
   const rawSize = rawBox.getSize(new THREE.Vector3());
   const maxDim = Math.max(rawSize.x, rawSize.y, rawSize.z);
-  const targetMaxDim = 2.2;
   const scale =
     Number.isFinite(maxDim) && maxDim > 0.000001 ? targetMaxDim / maxDim : 1.0;
 
   root.scale.setScalar(scale);
-  root.rotation.y = -0.22 * Math.PI;
-  root.position.set(3.8, 0.0, -9.15);
+  root.rotation.set(0.0, 0.0, 0.0);
+  root.position.set(0.0, 0.0, 0.0);
   root.updateMatrixWorld(true);
 
   const box = new THREE.Box3().setFromObject(root);
-  if (Number.isFinite(box.min.y)) {
-    root.position.y += 0.03 - box.min.y;
-  }
+  const center = box.getCenter(new THREE.Vector3());
+  root.position.set(-center.x, floorOffset - box.min.y, -center.z);
   root.updateMatrixWorld(true);
 
+  const vertices = collectModelVertices(root);
+
+  if (vertices.length === 0) {
+    throw new Error(`${url} had no mesh vertices`);
+  }
+
+  const localBounds = new THREE.Box3().setFromArray(vertices);
+  return {
+    vertices,
+    bounds: localBounds,
+    scale,
+    maxDim,
+  };
+}
+
+function collectModelVertices(root) {
   const vertices = [];
   const temp = new THREE.Vector3();
+
   root.traverse((node) => {
     if (!node.isMesh || !node.geometry) return;
     const geometry = node.geometry;
@@ -459,31 +665,55 @@ async function loadBoomBoxVertices() {
         temp.fromBufferAttribute(positions, vi).applyMatrix4(matrix);
         vertices.push(temp.x, temp.y, temp.z);
       }
-    } else {
-      for (let i = 0; i < positions.count; i += 1) {
-        temp.fromBufferAttribute(positions, i).applyMatrix4(matrix);
-        vertices.push(temp.x, temp.y, temp.z);
-      }
+      return;
+    }
+
+    for (let i = 0; i < positions.count; i += 1) {
+      temp.fromBufferAttribute(positions, i).applyMatrix4(matrix);
+      vertices.push(temp.x, temp.y, temp.z);
     }
   });
 
-  if (vertices.length === 0) {
-    throw new Error("BoomBox.fbx had no mesh vertices");
+  return new Float32Array(vertices);
+}
+
+function bakeModelVertices(localVertices, position, rotation) {
+  const quaternion = new THREE.Quaternion().setFromEuler(rotation);
+  return transformModelVertices(localVertices, position, quaternion);
+}
+
+function transformModelVertices(localVertices, position, quaternion, target) {
+  const transformed = target ?? new Float32Array(localVertices.length);
+  const matrix = new THREE.Matrix4().compose(
+    position,
+    quaternion,
+    new THREE.Vector3(1.0, 1.0, 1.0),
+  );
+  const temp = new THREE.Vector3();
+
+  for (let i = 0; i < localVertices.length; i += 3) {
+    temp.set(localVertices[i], localVertices[i + 1], localVertices[i + 2]);
+    temp.applyMatrix4(matrix);
+    transformed[i] = temp.x;
+    transformed[i + 1] = temp.y;
+    transformed[i + 2] = temp.z;
   }
 
-  return {
-    vertices: new Float32Array(vertices),
-    scale,
-    maxDim,
-  };
+  return transformed;
+}
+
+function createWritableVertexBuffer(device, values) {
+  const buffer = device.createBuffer({
+    size: values.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(buffer, 0, values);
+  return buffer;
 }
 
 async function main() {
   const mountedPlayer = await mountHiddenVideoJsPlayer({
     containerId: "videojs-player-root",
-    src: "https://stream.mux.com/9iUYcsVCtyyWdPfHFsJNreL3j01K2V1xizq4ZcYHwXQs.m3u8",
-    poster:
-      "https://image.mux.com/9iUYcsVCtyyWdPfHFsJNreL3j01K2V1xizq4ZcYHwXQs/storyboard.png",
   });
   let videoElement = mountedPlayer.videoElement;
   const getMountedVideoElement = mountedPlayer.getVideoElement;
@@ -494,6 +724,7 @@ async function main() {
 
   let videoRenderEnabled = true;
   let videoRenderError = "";
+  let tapeInserted = false;
 
   playButton.addEventListener("click", () => {
     videoElement.muted = false;
@@ -511,7 +742,7 @@ async function main() {
 
   const { instance } = await instantiateZigWasm("./webgpu_world.wasm");
   const wasm = instance.exports;
-  const floorShaderCode = getGrassFloorShaderCode();
+  const floorShaderCode = getWoodFloorShaderCode();
   const frameShaderCode = getTvFrameShaderFromZig(wasm);
   const boomboxShaderCode = getBoomBoxShaderFromZig(wasm);
   const archTextShaderCode = getArchTextShaderFromZig(wasm);
@@ -738,8 +969,34 @@ async function main() {
   let boomboxVertexBuffer = null;
   let boomboxVertexCount = 0;
   let boomboxInfo = "not loaded";
+  const tapeBaseQuaternion = new THREE.Quaternion().setFromEuler(
+    TAPE_MODEL_CONFIG.rotation,
+  );
+  const tapeHeldYawQuaternion = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0.0, 1.0, 0.0),
+    TAPE_HOLD_YAW_OFFSET,
+  );
+  const tapeRuntime = {
+    state: "unavailable",
+    targetable: false,
+    localVertices: null,
+    worldVertices: null,
+    vertexBuffer: null,
+    vertexCount: 0,
+    worldPosition: TAPE_MODEL_CONFIG.position.clone(),
+    worldQuaternion: tapeBaseQuaternion.clone(),
+    pickupAnchorLocal: new THREE.Vector3(0.0, 0.0, 0.0),
+  };
+  let tapeModelInfo = "not loaded";
+  let playerModelVertexBuffer = null;
+  let playerModelVertexCount = 0;
+  let playerModelInfo = "not loaded";
+
   try {
-    const boomboxMesh = await loadBoomBoxVertices();
+    const boomboxMesh = await loadStaticModelVertices({
+      loader: new FBXLoader(),
+      ...BOOMBOX_MODEL_CONFIG,
+    });
     boomboxVertexBuffer = uploadBuffer(
       device,
       boomboxMesh.vertices,
@@ -753,6 +1010,52 @@ async function main() {
     boomboxInfo = "load failed";
   }
 
+  try {
+    const tapeModelMesh = await loadModelMesh({
+      loader: new GLTFLoader(),
+      ...TAPE_MODEL_CONFIG,
+    });
+    tapeRuntime.localVertices = tapeModelMesh.vertices;
+    tapeRuntime.worldVertices = bakeModelVertices(
+      tapeModelMesh.vertices,
+      tapeRuntime.worldPosition,
+      TAPE_MODEL_CONFIG.rotation,
+    );
+    tapeRuntime.vertexBuffer = createWritableVertexBuffer(
+      device,
+      tapeRuntime.worldVertices,
+    );
+    tapeRuntime.vertexCount = tapeModelMesh.vertices.length / 3;
+    tapeRuntime.pickupAnchorLocal.copy(
+      tapeModelMesh.bounds.getCenter(new THREE.Vector3()),
+    );
+    tapeRuntime.state = "world";
+    tapeModelInfo = `${tapeRuntime.vertexCount} verts scale=${tapeModelMesh.scale.toFixed(4)} raw=${tapeModelMesh.maxDim.toFixed(2)}`;
+  } catch (error) {
+    console.error("tape.glb load failed:", error);
+    status(`tape.glb load failed: ${error.message}`);
+    tapeRuntime.state = "load failed";
+    tapeModelInfo = "load failed";
+  }
+
+  try {
+    const playerModelMesh = await loadStaticModelVertices({
+      loader: new GLTFLoader(),
+      ...PLAYER_MODEL_CONFIG,
+    });
+    playerModelVertexBuffer = uploadBuffer(
+      device,
+      playerModelMesh.vertices,
+      GPUBufferUsage.VERTEX,
+    );
+    playerModelVertexCount = playerModelMesh.vertices.length / 3;
+    playerModelInfo = `${playerModelVertexCount} verts scale=${playerModelMesh.scale.toFixed(4)} raw=${playerModelMesh.maxDim.toFixed(2)}`;
+  } catch (error) {
+    console.error("player.glb load failed:", error);
+    status(`player.glb load failed: ${error.message}`);
+    playerModelInfo = "load failed";
+  }
+
   const cameraBuffer = device.createBuffer({
     size: 64,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -762,7 +1065,7 @@ async function main() {
     layout: floorPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: cameraBuffer } }],
   });
-  const floorTextures = createGrassFloorTextures(device);
+  const floorTextures = createWoodFloorTextures(device);
   const floorSampler = device.createSampler({
     addressModeU: "repeat",
     addressModeV: "repeat",
@@ -771,7 +1074,8 @@ async function main() {
     mipmapFilter: "linear",
   });
   const floorMaterialValues = new Float32Array([
-    2.4, 2.4, 1.15, 0.08, 1.0, 1.0, 1.0, 0.0,
+    // uv_scale.x, uv_scale.y, normal_strength, roughness_bias, tint.r, tint.g, tint.b, pad
+    3.0, 3.0, 0.85, -0.05, 1.05, 0.95, 0.85, 0.0,
   ]);
   const floorMaterialBuffer = device.createBuffer({
     size: floorMaterialValues.byteLength,
@@ -823,10 +1127,26 @@ async function main() {
 
   const pressed = new Set();
   let lastKeyEvent = "none";
+  let tapePickupQueued = false;
+  let tapeDropQueued = false;
+  let tapeActionQueued = false;
+  let vcrNearby = false;
+  const toVcr = new THREE.Vector3();
   let lookDeltaX = 0;
   let lookDeltaY = 0;
   let previousTime = performance.now();
   let depthTexture = null;
+  const cameraPosition = new THREE.Vector3();
+  const cameraForward = new THREE.Vector3();
+  const cameraRight = new THREE.Vector3();
+  const cameraUp = new THREE.Vector3();
+  const cameraBackward = new THREE.Vector3();
+  const cameraQuaternion = new THREE.Quaternion();
+  const tapeHeldQuaternion = new THREE.Quaternion();
+  const tapeHeldPosition = new THREE.Vector3();
+  const tapePickupPoint = new THREE.Vector3();
+  const toTape = new THREE.Vector3();
+  const cameraBasisMatrix = new THREE.Matrix4();
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -844,6 +1164,9 @@ async function main() {
   document.addEventListener("keydown", (event) => {
     lastKeyEvent = `down:${event.code}`;
     pressed.add(event.code);
+    if (event.code === "KeyF" && !event.repeat) {
+      tapeActionQueued = true;
+    }
   });
   document.addEventListener("keyup", (event) => {
     lastKeyEvent = `up:${event.code}`;
@@ -899,6 +1222,21 @@ async function main() {
         wasm.camera_position_ptr(),
         3,
       );
+      const forward = new Float32Array(
+        wasm.memory.buffer,
+        wasm.camera_forward_ptr(),
+        3,
+      );
+      const right = new Float32Array(
+        wasm.memory.buffer,
+        wasm.camera_right_ptr(),
+        3,
+      );
+      const up = new Float32Array(wasm.memory.buffer, wasm.camera_up_ptr(), 3);
+      cameraPosition.fromArray(pos);
+      cameraForward.fromArray(forward).normalize();
+      cameraRight.fromArray(right).normalize();
+      cameraUp.fromArray(up).normalize();
       const activeVideoElement = getMountedVideoElement?.();
       if (activeVideoElement instanceof HTMLVideoElement && activeVideoElement !== videoElement) {
         videoElement = activeVideoElement;
@@ -906,6 +1244,179 @@ async function main() {
         videoElement.playsInline = true;
         videoElement.loop = true;
       }
+
+      // -- VCR proximity detection --
+      toVcr.subVectors(VCR_POSITION, cameraPosition);
+      const vcrDistance = toVcr.length();
+      vcrNearby = false;
+      if (vcrDistance > 0.0001) {
+        const vcrFacing = toVcr.normalize().dot(cameraForward);
+        vcrNearby =
+          vcrDistance <= VCR_INSERT_RADIUS &&
+          vcrFacing >= VCR_INSERT_DOT_THRESHOLD;
+      }
+
+      // -- Handle F key action based on current state --
+      if (tapeActionQueued) {
+        if (tapeRuntime.state === "held" && vcrNearby) {
+          // INSERT tape into VCR: hide tape mesh, load video, play
+          tapeRuntime.state = "inserted";
+          tapeRuntime.targetable = false;
+          tapeInserted = true;
+
+          // Move tape vertices off-screen so it disappears
+          if (tapeRuntime.worldVertices) {
+            tapeRuntime.worldVertices.fill(0);
+            device.queue.writeBuffer(
+              tapeRuntime.vertexBuffer,
+              0,
+              tapeRuntime.worldVertices,
+            );
+          }
+
+          const activeVid = getMountedVideoElement?.() ?? videoElement;
+          if (activeVid instanceof HTMLVideoElement) {
+            videoElement = activeVid;
+          }
+          changeVideoSource(
+            videoElement,
+            TAPE_VIDEO_DATA.src,
+            TAPE_VIDEO_DATA.poster,
+          );
+          videoRenderEnabled = true;
+          status(`Now playing: ${TAPE_VIDEO_DATA.title}`);
+
+        } else if (tapeRuntime.state === "inserted" && vcrNearby) {
+          // EJECT tape from VCR: stop video, give tape back to hand
+          tapeRuntime.state = "held";
+          tapeInserted = false;
+
+          videoElement.pause();
+          videoElement.removeAttribute("src");
+          videoElement.load();
+          status("Tape ejected.");
+
+        } else if (tapeRuntime.state === "held" && !vcrNearby) {
+          // DROP tape on ground
+          const dropForward = new THREE.Vector3(
+            cameraForward.x,
+            0.0,
+            cameraForward.z,
+          ).normalize();
+          const dropPos = new THREE.Vector3()
+            .copy(cameraPosition)
+            .addScaledVector(dropForward, TAPE_DROP_DISTANCE);
+          dropPos.y = 0.0;
+
+          tapeRuntime.worldPosition.copy(dropPos);
+          tapeRuntime.worldQuaternion.copy(tapeBaseQuaternion);
+
+          const dropVertices = bakeModelVertices(
+            tapeRuntime.localVertices,
+            tapeRuntime.worldPosition,
+            TAPE_MODEL_CONFIG.rotation,
+          );
+          tapeRuntime.worldVertices.set(dropVertices);
+          device.queue.writeBuffer(
+            tapeRuntime.vertexBuffer,
+            0,
+            tapeRuntime.worldVertices,
+          );
+
+          tapeRuntime.state = "world";
+          tapeRuntime.targetable = false;
+
+        } else if (tapeRuntime.state === "world") {
+          // PICKUP tape from ground (handled below via targetable check)
+          tapePickupQueued = true;
+        }
+      }
+      tapeActionQueued = false;
+
+      // -- Tape pickup targeting (when tape is on the ground) --
+      tapeRuntime.targetable = false;
+      if (tapeRuntime.state === "world") {
+        tapePickupPoint
+          .copy(tapeRuntime.pickupAnchorLocal)
+          .applyQuaternion(tapeRuntime.worldQuaternion)
+          .add(tapeRuntime.worldPosition);
+        toTape.subVectors(tapePickupPoint, cameraPosition);
+        const tapeDistance = toTape.length();
+        if (tapeDistance > 0.0001) {
+          const tapeFacing = toTape.normalize().dot(cameraForward);
+          tapeRuntime.targetable =
+            tapeDistance <= TAPE_PICKUP_RADIUS &&
+            tapeFacing >= TAPE_PICKUP_DOT_THRESHOLD;
+        }
+        if (tapePickupQueued && tapeRuntime.targetable) {
+          tapeRuntime.state = "held";
+          tapeRuntime.targetable = false;
+        }
+      }
+      tapePickupQueued = false;
+
+      // -- Tape held: attach to hand --
+      if (
+        tapeRuntime.state === "held" &&
+        tapeRuntime.localVertices &&
+        tapeRuntime.worldVertices &&
+        tapeRuntime.vertexBuffer
+      ) {
+        tapeHeldPosition
+          .copy(cameraPosition)
+          .addScaledVector(cameraRight, TAPE_HOLD_OFFSET.right)
+          .addScaledVector(cameraUp, TAPE_HOLD_OFFSET.up)
+          .addScaledVector(cameraForward, TAPE_HOLD_OFFSET.forward);
+        cameraBackward.copy(cameraForward).negate();
+        cameraBasisMatrix.makeBasis(cameraRight, cameraUp, cameraBackward);
+        cameraQuaternion.setFromRotationMatrix(cameraBasisMatrix);
+        tapeHeldQuaternion
+          .copy(cameraQuaternion)
+          .multiply(tapeHeldYawQuaternion)
+          .multiply(tapeBaseQuaternion);
+        transformModelVertices(
+          tapeRuntime.localVertices,
+          tapeHeldPosition,
+          tapeHeldQuaternion,
+          tapeRuntime.worldVertices,
+        );
+        device.queue.writeBuffer(
+          tapeRuntime.vertexBuffer,
+          0,
+          tapeRuntime.worldVertices,
+        );
+      }
+
+      // -- Status messages --
+      if (tapeRuntime.state === "inserted") {
+        if (vcrNearby) {
+          setContextStatus("Press F to eject tape.");
+        } else {
+          setContextStatus(`Playing: ${TAPE_VIDEO_DATA.title}`);
+        }
+      } else if (tapeRuntime.state === "held") {
+        if (vcrNearby) {
+          setContextStatus("Press F to insert tape into player.");
+        } else {
+          setContextStatus("Tape in hand. Press F to drop.");
+        }
+      } else if (tapeRuntime.targetable) {
+        setContextStatus("Press F to pick up tape.");
+      } else {
+        setContextStatus("");
+      }
+
+      if (crosshairEl) {
+        crosshairEl.dataset.state =
+          tapeRuntime.state === "held"
+            ? "held"
+            : tapeRuntime.state === "inserted"
+              ? "held"
+              : tapeRuntime.targetable || (vcrNearby && tapeRuntime.state === "held")
+                ? "targetable"
+                : "idle";
+      }
+
       const keyList = Array.from(pressed).join(", ");
       const locked = document.pointerLockElement === canvas ? "yes" : "no";
       const videoState = videoElement.paused ? "paused" : "playing";
@@ -915,7 +1426,10 @@ async function main() {
         `keys: ${keyList || "none"}\n` +
         `lastKey: ${lastKeyEvent}\n` +
         `video: ${videoState}${videoRenderError ? ` (${videoRenderError})` : ""}\n` +
-        `boombox: ${boomboxInfo}`;
+        `boombox: ${boomboxInfo}\n` +
+        `tape: ${tapeRuntime.state}${tapeRuntime.targetable ? " targetable" : ""}\n` +
+        `tape.glb: ${tapeModelInfo}\n` +
+        `player.glb: ${playerModelInfo}`;
 
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({
@@ -953,6 +1467,20 @@ async function main() {
         pass.draw(boomboxVertexCount, 1, 0, 0);
       }
 
+      if (tapeRuntime.vertexBuffer && tapeRuntime.vertexCount > 0) {
+        pass.setPipeline(boomboxPipeline);
+        pass.setBindGroup(0, boomboxCameraBindGroup);
+        pass.setVertexBuffer(0, tapeRuntime.vertexBuffer);
+        pass.draw(tapeRuntime.vertexCount, 1, 0, 0);
+      }
+
+      if (playerModelVertexBuffer && playerModelVertexCount > 0) {
+        pass.setPipeline(boomboxPipeline);
+        pass.setBindGroup(0, boomboxCameraBindGroup);
+        pass.setVertexBuffer(0, playerModelVertexBuffer);
+        pass.draw(playerModelVertexCount, 1, 0, 0);
+      }
+
       pass.setPipeline(archTextPipeline);
       pass.setBindGroup(0, archTextCameraBindGroup);
       pass.setBindGroup(1, archTextBindGroup);
@@ -960,6 +1488,7 @@ async function main() {
       pass.draw(archTextVertexCount, 1, 0, 0);
 
       if (
+        tapeInserted &&
         videoRenderEnabled &&
         videoElement.readyState >= 2 &&
         videoElement.videoWidth > 0 &&

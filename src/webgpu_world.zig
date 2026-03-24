@@ -256,6 +256,9 @@ var view_proj: [16]f32 = .{
     0.0, 0.0, 0.0, 1.0,
 };
 var camera_position_out: [3]f32 = .{ 0.0, 0.0, 0.0 };
+var camera_forward_out: [3]f32 = .{ 0.0, 0.0, -1.0 };
+var camera_right_out: [3]f32 = .{ 1.0, 0.0, 0.0 };
+var camera_up_out: [3]f32 = .{ 0.0, 1.0, 0.0 };
 
 var last_error_storage: [256]u8 = [_]u8{0} ** 256;
 var last_error_length: u32 = 0;
@@ -370,6 +373,18 @@ export fn camera_matrix_ptr() u32 {
 
 export fn camera_position_ptr() u32 {
     return @intCast(@intFromPtr(&camera_position_out[0]));
+}
+
+export fn camera_forward_ptr() u32 {
+    return @intCast(@intFromPtr(&camera_forward_out[0]));
+}
+
+export fn camera_right_ptr() u32 {
+    return @intCast(@intFromPtr(&camera_right_out[0]));
+}
+
+export fn camera_up_ptr() u32 {
+    return @intCast(@intFromPtr(&camera_up_out[0]));
 }
 
 export fn floor_vertex_ptr() u32 {
@@ -489,12 +504,17 @@ fn safeAspect(width: u32, height: u32) f32 {
 
 fn recomputeViewProjection() void {
     const forward = cameraForward();
-    const target = Vec3.add(camera.position, forward);
     const up = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+    const right = normalize(cross(forward, up));
+    const camera_up = normalize(cross(right, forward));
+    const target = Vec3.add(camera.position, forward);
     const view = lookAtRH(camera.position, target, up);
     const proj = perspectiveRH(camera.fov_y, camera.aspect, camera.near, camera.far);
     view_proj = mulMat4(proj, view);
     camera_position_out = .{ camera.position.x, camera.position.y, camera.position.z };
+    camera_forward_out = .{ forward.x, forward.y, forward.z };
+    camera_right_out = .{ right.x, right.y, right.z };
+    camera_up_out = .{ camera_up.x, camera_up.y, camera_up.z };
 }
 
 fn cameraForward() Vec3 {

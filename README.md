@@ -6,6 +6,8 @@ This project builds a browser WebGPU scene where:
 - JavaScript only handles browser APIs: WASM loading, WebGPU setup, input events, and frame submission.
 - Video playback is rendered onto a quad inside the 3D scene with a 3D TV-style frame around it.
 - `BoomBox.fbx` is loaded at runtime and rendered on the floor near the TV.
+- `tape.glb` is loaded at runtime and rendered on the floor near the TV screen.
+- `player.glb` is loaded at runtime and rendered on the floor in front of the TV.
 - A curved 3D banner above the TV reads `VJS 10 Theater`.
 
 ## Install

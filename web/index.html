@@ -8,6 +8,10 @@
     <body>
         <main class="layout">
             <canvas id="scene" aria-label="WebGPU scene"></canvas>
+            <div id="crosshair" aria-hidden="true">
+                <span></span>
+                <span></span>
+            </div>
             <section class="panel">
                 <h1>VJS 10 Theater</h1>
                 <p id="status">Booting...</p>
@@ -17,6 +21,7 @@
                     <li><strong>Rise / Fall:</strong> E / Q</li>
                     <li><strong>Sprint:</strong> Shift</li>
                     <li><strong>Look:</strong> Mouse</li>
+                    <li><strong>Pickup Tape:</strong> Aim + E</li>
                 </ul>
                 <div class="video-actions">
                     <button id="cursor-lock" type="button">Lock Cursor</button>
