@@ -1,4 +1,7 @@
-import { mountHiddenVideoJsPlayer, changeVideoSource } from "./videojs-player-host.js";
+import {
+  mountHiddenVideoJsPlayer,
+  changeVideoSource,
+} from "./videojs-player-host.js";
 import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -6,7 +9,6 @@ import "./style.css";
 
 const canvas = document.getElementById("scene");
 const statusEl = document.getElementById("status");
-const telemetryEl = document.getElementById("telemetry");
 const crosshairEl = document.getElementById("crosshair");
 const cursorLockButton = document.getElementById("cursor-lock");
 const playButton = document.getElementById("video-play");
@@ -205,7 +207,9 @@ function getCurtainShaderFromZig(exports) {
   const packed = exports.curtain_shader_wgsl();
   const { ptr, len } = unpackResult(packed);
   if (!ptr || !len) {
-    throw new Error(readError(exports) || "curtain shader export returned empty");
+    throw new Error(
+      readError(exports) || "curtain shader export returned empty",
+    );
   }
   const source = readString(exports.memory, ptr, len);
   exports.free(ptr, len);
@@ -227,7 +231,9 @@ function getPosterShaderFromZig(exports) {
   const packed = exports.poster_shader_wgsl();
   const { ptr, len } = unpackResult(packed);
   if (!ptr || !len) {
-    throw new Error(readError(exports) || "poster shader export returned empty");
+    throw new Error(
+      readError(exports) || "poster shader export returned empty",
+    );
   }
   const source = readString(exports.memory, ptr, len);
   exports.free(ptr, len);
@@ -241,13 +247,15 @@ async function loadImageTexture(device, url) {
   const texture = device.createTexture({
     size: [bitmap.width, bitmap.height, 1],
     format: "rgba8unorm",
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
   });
-  device.queue.copyExternalImageToTexture(
-    { source: bitmap },
-    { texture },
-    [bitmap.width, bitmap.height],
-  );
+  device.queue.copyExternalImageToTexture({ source: bitmap }, { texture }, [
+    bitmap.width,
+    bitmap.height,
+  ]);
   return texture;
 }
 
@@ -367,7 +375,8 @@ function fbm(x, y, seed, octaves = 4) {
   let amplitude = 0.5;
   let frequency = 1.0;
   for (let i = 0; i < octaves; i++) {
-    value += amplitude * smoothNoise(x * frequency, y * frequency, seed + i * 31.7);
+    value +=
+      amplitude * smoothNoise(x * frequency, y * frequency, seed + i * 31.7);
     amplitude *= 0.5;
     frequency *= 2.0;
   }
@@ -389,14 +398,14 @@ function createWoodFloorTextures(device, size = 512) {
   for (let i = 0; i < PLANK_COUNT; i++) {
     plankSeeds.push({
       grainSeed: 1.0 + i * 7.3,
-      colorShift: hash2D(i, 0, 42.1),       // per-plank color variation
-      grainOffset: hash2D(i, 1, 88.3) * 20,  // offset grain phase per plank
+      colorShift: hash2D(i, 0, 42.1), // per-plank color variation
+      grainOffset: hash2D(i, 1, 88.3) * 20, // offset grain phase per plank
       // Staggered end-joints: each row's splits are offset from the previous
       jointX: Math.floor(size * (0.3 + hash2D(i, 2, 55.0) * 0.4)),
     });
   }
 
-  const SEAM_WIDTH = Math.max(1, Math.round(size * 0.004));  // ~2px at 512
+  const SEAM_WIDTH = Math.max(1, Math.round(size * 0.004)); // ~2px at 512
   const JOINT_WIDTH = Math.max(1, Math.round(size * 0.003)); // ~1-2px
 
   // Generate height/grain data
@@ -417,16 +426,26 @@ function createWoodFloorTextures(device, size = 512) {
       // Secondary finer grain
       const fineGrain = 0.5 + 0.5 * Math.sin(grainCoord * 3.7 + u * 8.0);
       // Subtle noise for micro-texture
-      const microNoise = smoothNoise(px * 0.08, py * 0.08, plank.grainSeed + 100);
+      const microNoise = smoothNoise(
+        px * 0.08,
+        py * 0.08,
+        plank.grainSeed + 100,
+      );
 
       // Occasional knot
       const knotCx = size * (0.2 + hash2D(plankIdx, 3, 19.0) * 0.6);
-      const knotCy = plankIdx * plankH + plankH * (0.3 + hash2D(plankIdx, 4, 23.0) * 0.4);
-      const knotDist = Math.hypot(px - knotCx, (py - knotCy) * 1.5) / (size * 0.03);
+      const knotCy =
+        plankIdx * plankH + plankH * (0.3 + hash2D(plankIdx, 4, 23.0) * 0.4);
+      const knotDist =
+        Math.hypot(px - knotCx, (py - knotCy) * 1.5) / (size * 0.03);
       const knot = Math.max(0, 1.0 - knotDist);
       const knotRings = knot > 0.01 ? 0.5 + 0.5 * Math.sin(knotDist * 12.0) : 0;
 
-      const h = grain * 0.45 + fineGrain * 0.25 + microNoise * 0.15 + knotRings * knot * 0.15;
+      const h =
+        grain * 0.45 +
+        fineGrain * 0.25 +
+        microNoise * 0.15 +
+        knotRings * knot * 0.15;
       heightData[py * size + px] = h;
     }
   }
@@ -435,7 +454,7 @@ function createWoodFloorTextures(device, size = 512) {
   for (let py = 0; py < size; py++) {
     const plankIdx = Math.min(Math.floor(py / plankH), PLANK_COUNT - 1);
     const plank = plankSeeds[plankIdx];
-    const plankLocalY = (py % plankH);
+    const plankLocalY = py % plankH;
     const yDown = wrapIndex(py - 1, size);
     const yUp = wrapIndex(py + 1, size);
 
@@ -452,7 +471,8 @@ function createWoodFloorTextures(device, size = 512) {
       const hUp = heightData[yUp * size + px];
 
       // Seam detection: horizontal seams between planks
-      const isHSeam = plankLocalY < SEAM_WIDTH || plankLocalY >= (plankH - SEAM_WIDTH);
+      const isHSeam =
+        plankLocalY < SEAM_WIDTH || plankLocalY >= plankH - SEAM_WIDTH;
       // Vertical end-joints per plank
       const jointDist = Math.abs(px - plank.jointX);
       const isVJoint = jointDist < JOINT_WIDTH;
@@ -466,8 +486,10 @@ function createWoodFloorTextures(device, size = 512) {
 
       // Knot darkening
       const knotCx = size * (0.2 + hash2D(plankIdx, 3, 19.0) * 0.6);
-      const knotCy = plankIdx * plankH + plankH * (0.3 + hash2D(plankIdx, 4, 23.0) * 0.4);
-      const knotDist = Math.hypot(px - knotCx, (py - knotCy) * 1.5) / (size * 0.035);
+      const knotCy =
+        plankIdx * plankH + plankH * (0.3 + hash2D(plankIdx, 4, 23.0) * 0.4);
+      const knotDist =
+        Math.hypot(px - knotCx, (py - knotCy) * 1.5) / (size * 0.035);
       const knotDarken = Math.max(0, 1.0 - knotDist);
       const knotMul = 1.0 - knotDarken * 0.35;
 
@@ -508,7 +530,9 @@ function createWoodFloorTextures(device, size = 512) {
       } else {
         roughness = 0.78 + h * 0.12 + knotDarken * 0.08;
       }
-      roughnessData[idx] = Math.round(Math.max(0, Math.min(1, roughness)) * 255);
+      roughnessData[idx] = Math.round(
+        Math.max(0, Math.min(1, roughness)) * 255,
+      );
     }
   }
 
@@ -580,43 +604,179 @@ function appendCuboidVertices(vertices, min, max) {
   const z1 = max.z;
 
   vertices.push(
-    x0, y1, z1, x1, y1, z1, x1, y0, z1,
-    x0, y1, z1, x1, y0, z1, x0, y0, z1,
+    x0,
+    y1,
+    z1,
+    x1,
+    y1,
+    z1,
+    x1,
+    y0,
+    z1,
+    x0,
+    y1,
+    z1,
+    x1,
+    y0,
+    z1,
+    x0,
+    y0,
+    z1,
 
-    x1, y1, z0, x0, y1, z0, x0, y0, z0,
-    x1, y1, z0, x0, y0, z0, x1, y0, z0,
+    x1,
+    y1,
+    z0,
+    x0,
+    y1,
+    z0,
+    x0,
+    y0,
+    z0,
+    x1,
+    y1,
+    z0,
+    x0,
+    y0,
+    z0,
+    x1,
+    y0,
+    z0,
 
-    x0, y1, z0, x0, y1, z1, x0, y0, z1,
-    x0, y1, z0, x0, y0, z1, x0, y0, z0,
+    x0,
+    y1,
+    z0,
+    x0,
+    y1,
+    z1,
+    x0,
+    y0,
+    z1,
+    x0,
+    y1,
+    z0,
+    x0,
+    y0,
+    z1,
+    x0,
+    y0,
+    z0,
 
-    x1, y1, z1, x1, y1, z0, x1, y0, z0,
-    x1, y1, z1, x1, y0, z0, x1, y0, z1,
+    x1,
+    y1,
+    z1,
+    x1,
+    y1,
+    z0,
+    x1,
+    y0,
+    z0,
+    x1,
+    y1,
+    z1,
+    x1,
+    y0,
+    z0,
+    x1,
+    y0,
+    z1,
 
-    x0, y1, z0, x1, y1, z0, x1, y1, z1,
-    x0, y1, z0, x1, y1, z1, x0, y1, z1,
+    x0,
+    y1,
+    z0,
+    x1,
+    y1,
+    z0,
+    x1,
+    y1,
+    z1,
+    x0,
+    y1,
+    z0,
+    x1,
+    y1,
+    z1,
+    x0,
+    y1,
+    z1,
 
-    x0, y0, z1, x1, y0, z1, x1, y0, z0,
-    x0, y0, z1, x1, y0, z0, x0, y0, z0,
+    x0,
+    y0,
+    z1,
+    x1,
+    y0,
+    z1,
+    x1,
+    y0,
+    z0,
+    x0,
+    y0,
+    z1,
+    x1,
+    y0,
+    z0,
+    x0,
+    y0,
+    z0,
   );
 }
 
 function createProjectorVertices() {
   const vertices = [];
-  appendCuboidVertices(vertices, PROJECTOR_CONFIG.mountMin, PROJECTOR_CONFIG.mountMax);
-  appendCuboidVertices(vertices, PROJECTOR_CONFIG.neckMin, PROJECTOR_CONFIG.neckMax);
-  appendCuboidVertices(vertices, PROJECTOR_CONFIG.bodyMin, PROJECTOR_CONFIG.bodyMax);
-  appendCuboidVertices(vertices, PROJECTOR_CONFIG.lensMin, PROJECTOR_CONFIG.lensMax);
+  appendCuboidVertices(
+    vertices,
+    PROJECTOR_CONFIG.mountMin,
+    PROJECTOR_CONFIG.mountMax,
+  );
+  appendCuboidVertices(
+    vertices,
+    PROJECTOR_CONFIG.neckMin,
+    PROJECTOR_CONFIG.neckMax,
+  );
+  appendCuboidVertices(
+    vertices,
+    PROJECTOR_CONFIG.bodyMin,
+    PROJECTOR_CONFIG.bodyMax,
+  );
+  appendCuboidVertices(
+    vertices,
+    PROJECTOR_CONFIG.lensMin,
+    PROJECTOR_CONFIG.lensMax,
+  );
   return new Float32Array(vertices);
 }
 
 function appendBeamQuad(vertices, a, b, c, d) {
   vertices.push(
-    a.x, a.y, a.z, 0.0, 0.0,
-    b.x, b.y, b.z, 1.0, 0.0,
-    c.x, c.y, c.z, 1.0, 1.0,
-    a.x, a.y, a.z, 0.0, 0.0,
-    c.x, c.y, c.z, 1.0, 1.0,
-    d.x, d.y, d.z, 0.0, 1.0,
+    a.x,
+    a.y,
+    a.z,
+    0.0,
+    0.0,
+    b.x,
+    b.y,
+    b.z,
+    1.0,
+    0.0,
+    c.x,
+    c.y,
+    c.z,
+    1.0,
+    1.0,
+    a.x,
+    a.y,
+    a.z,
+    0.0,
+    0.0,
+    c.x,
+    c.y,
+    c.z,
+    1.0,
+    1.0,
+    d.x,
+    d.y,
+    d.z,
+    0.0,
+    1.0,
   );
 }
 
@@ -860,7 +1020,12 @@ async function loadStaticModelVertices({
   };
 }
 
-async function loadModelMesh({ loader, url, targetMaxDim, floorOffset = 0.03 }) {
+async function loadModelMesh({
+  loader,
+  url,
+  targetMaxDim,
+  floorOffset = 0.03,
+}) {
   const loaded = await loader.loadAsync(url);
   const root = getLoadedRoot(loaded);
 
@@ -976,7 +1141,6 @@ async function main() {
   videoElement.loop = true;
 
   let videoRenderEnabled = true;
-  let videoRenderError = "";
   let tapeInserted = false;
   let lightsOn = false;
 
@@ -1348,7 +1512,11 @@ async function main() {
     wasm.wall_vertex_ptr(),
     wasm.wall_vertex_len(),
   );
-  const wallVertexBuffer = uploadBuffer(device, new Float32Array(wallVerts), GPUBufferUsage.VERTEX);
+  const wallVertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(wallVerts),
+    GPUBufferUsage.VERTEX,
+  );
   const wallVertexCount = wasm.wall_vertex_count();
 
   // Curtain vertices
@@ -1357,7 +1525,11 @@ async function main() {
     wasm.curtain_vertex_ptr(),
     wasm.curtain_vertex_len(),
   );
-  const curtainVertexBuffer = uploadBuffer(device, new Float32Array(curtainVerts), GPUBufferUsage.VERTEX);
+  const curtainVertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(curtainVerts),
+    GPUBufferUsage.VERTEX,
+  );
   const curtainVertexCount = wasm.curtain_vertex_count();
 
   // Seat vertices
@@ -1366,7 +1538,11 @@ async function main() {
     wasm.seat_vertex_ptr(),
     wasm.seat_vertex_len(),
   );
-  const seatVertexBuffer = uploadBuffer(device, new Float32Array(seatVerts), GPUBufferUsage.VERTEX);
+  const seatVertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(seatVerts),
+    GPUBufferUsage.VERTEX,
+  );
   const seatVertexCount = wasm.seat_vertex_count();
 
   const projectorVertices = createProjectorVertices();
@@ -1386,12 +1562,36 @@ async function main() {
   const projectorBeamVertexCount = projectorBeamVertices.length / 5;
 
   // Poster vertex buffers (5 floats per vert: pos3 + uv2)
-  const poster0Verts = new Float32Array(wasm.memory.buffer, wasm.poster_0_vertex_ptr(), wasm.poster_0_vertex_len());
-  const poster0VertexBuffer = uploadBuffer(device, new Float32Array(poster0Verts), GPUBufferUsage.VERTEX);
-  const poster1Verts = new Float32Array(wasm.memory.buffer, wasm.poster_1_vertex_ptr(), wasm.poster_1_vertex_len());
-  const poster1VertexBuffer = uploadBuffer(device, new Float32Array(poster1Verts), GPUBufferUsage.VERTEX);
-  const poster2Verts = new Float32Array(wasm.memory.buffer, wasm.poster_2_vertex_ptr(), wasm.poster_2_vertex_len());
-  const poster2VertexBuffer = uploadBuffer(device, new Float32Array(poster2Verts), GPUBufferUsage.VERTEX);
+  const poster0Verts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.poster_0_vertex_ptr(),
+    wasm.poster_0_vertex_len(),
+  );
+  const poster0VertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(poster0Verts),
+    GPUBufferUsage.VERTEX,
+  );
+  const poster1Verts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.poster_1_vertex_ptr(),
+    wasm.poster_1_vertex_len(),
+  );
+  const poster1VertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(poster1Verts),
+    GPUBufferUsage.VERTEX,
+  );
+  const poster2Verts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.poster_2_vertex_ptr(),
+    wasm.poster_2_vertex_len(),
+  );
+  const poster2VertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(poster2Verts),
+    GPUBufferUsage.VERTEX,
+  );
   const posterVertexCount = 6; // 2 triangles per poster
 
   // Load left wall poster textures
@@ -1402,12 +1602,36 @@ async function main() {
   ]);
 
   // Right wall poster vertex buffers
-  const rposter0Verts = new Float32Array(wasm.memory.buffer, wasm.rposter_0_vertex_ptr(), wasm.rposter_0_vertex_len());
-  const rposter0VertexBuffer = uploadBuffer(device, new Float32Array(rposter0Verts), GPUBufferUsage.VERTEX);
-  const rposter1Verts = new Float32Array(wasm.memory.buffer, wasm.rposter_1_vertex_ptr(), wasm.rposter_1_vertex_len());
-  const rposter1VertexBuffer = uploadBuffer(device, new Float32Array(rposter1Verts), GPUBufferUsage.VERTEX);
-  const rposter2Verts = new Float32Array(wasm.memory.buffer, wasm.rposter_2_vertex_ptr(), wasm.rposter_2_vertex_len());
-  const rposter2VertexBuffer = uploadBuffer(device, new Float32Array(rposter2Verts), GPUBufferUsage.VERTEX);
+  const rposter0Verts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.rposter_0_vertex_ptr(),
+    wasm.rposter_0_vertex_len(),
+  );
+  const rposter0VertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(rposter0Verts),
+    GPUBufferUsage.VERTEX,
+  );
+  const rposter1Verts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.rposter_1_vertex_ptr(),
+    wasm.rposter_1_vertex_len(),
+  );
+  const rposter1VertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(rposter1Verts),
+    GPUBufferUsage.VERTEX,
+  );
+  const rposter2Verts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.rposter_2_vertex_ptr(),
+    wasm.rposter_2_vertex_len(),
+  );
+  const rposter2VertexBuffer = uploadBuffer(
+    device,
+    new Float32Array(rposter2Verts),
+    GPUBufferUsage.VERTEX,
+  );
 
   // Load right wall poster textures
   const [rposterTex0, rposterTex1, rposterTex2] = await Promise.all([
@@ -1418,7 +1642,6 @@ async function main() {
 
   let boomboxVertexBuffer = null;
   let boomboxVertexCount = 0;
-  let boomboxInfo = "not loaded";
   const tapeBaseQuaternion = new THREE.Quaternion().setFromEuler(
     TAPE_MODEL_CONFIG.rotation,
   );
@@ -1437,10 +1660,8 @@ async function main() {
     worldQuaternion: tapeBaseQuaternion.clone(),
     pickupAnchorLocal: new THREE.Vector3(0.0, 0.0, 0.0),
   };
-  let tapeModelInfo = "not loaded";
   let playerModelVertexBuffer = null;
   let playerModelVertexCount = 0;
-  let playerModelInfo = "not loaded";
 
   try {
     const boomboxMesh = await loadStaticModelVertices({
@@ -1453,11 +1674,9 @@ async function main() {
       GPUBufferUsage.VERTEX,
     );
     boomboxVertexCount = boomboxMesh.vertices.length / 3;
-    boomboxInfo = `${boomboxVertexCount} verts scale=${boomboxMesh.scale.toFixed(4)} raw=${boomboxMesh.maxDim.toFixed(2)}`;
   } catch (error) {
     console.error("BoomBox.fbx load failed:", error);
     status(`BoomBox load failed: ${error.message}`);
-    boomboxInfo = "load failed";
   }
 
   try {
@@ -1480,12 +1699,10 @@ async function main() {
       tapeModelMesh.bounds.getCenter(new THREE.Vector3()),
     );
     tapeRuntime.state = "world";
-    tapeModelInfo = `${tapeRuntime.vertexCount} verts scale=${tapeModelMesh.scale.toFixed(4)} raw=${tapeModelMesh.maxDim.toFixed(2)}`;
   } catch (error) {
     console.error("tape.glb load failed:", error);
     status(`tape.glb load failed: ${error.message}`);
     tapeRuntime.state = "load failed";
-    tapeModelInfo = "load failed";
   }
 
   try {
@@ -1499,11 +1716,9 @@ async function main() {
       GPUBufferUsage.VERTEX,
     );
     playerModelVertexCount = playerModelMesh.vertices.length / 3;
-    playerModelInfo = `${playerModelVertexCount} verts scale=${playerModelMesh.scale.toFixed(4)} raw=${playerModelMesh.maxDim.toFixed(2)}`;
   } catch (error) {
     console.error("player.glb load failed:", error);
     status(`player.glb load failed: ${error.message}`);
-    playerModelInfo = "load failed";
   }
 
   const cameraBuffer = device.createBuffer({
@@ -1525,7 +1740,8 @@ async function main() {
   });
   const floorMaterialValues = new Float32Array([
     // uv_scale.x, uv_scale.y, normal_strength, roughness_bias, tint.r, tint.g, tint.b, pad
-    4.0, 4.0, 0.4, 0.1, 1.0, 1.0, 1.0, 0.0,
+    4.0,
+    4.0, 0.4, 0.1, 1.0, 1.0, 1.0, 0.0,
   ]);
   const floorMaterialBuffer = device.createBuffer({
     size: floorMaterialValues.byteLength,
@@ -1671,7 +1887,6 @@ async function main() {
   });
 
   const pressed = new Set();
-  let lastKeyEvent = "none";
   let tapePickupQueued = false;
   let tapeDropQueued = false;
   let tapeActionQueued = false;
@@ -1719,7 +1934,9 @@ async function main() {
       );
       if (playPromise) {
         playPromise.catch(() => {
-          status(`Tape inserted. Press Play to start ${TAPE_VIDEO_DATA.title}.`);
+          status(
+            `Tape inserted. Press Play to start ${TAPE_VIDEO_DATA.title}.`,
+          );
         });
       }
       videoRenderEnabled = true;
@@ -1797,7 +2014,6 @@ async function main() {
 
   window.addEventListener("resize", resize);
   document.addEventListener("keydown", (event) => {
-    lastKeyEvent = `down:${event.code}`;
     pressed.add(event.code);
     if (event.code === "KeyF" && !event.repeat) {
       if (!performTapeAction()) {
@@ -1806,7 +2022,6 @@ async function main() {
     }
   });
   document.addEventListener("keyup", (event) => {
-    lastKeyEvent = `up:${event.code}`;
     pressed.delete(event.code);
   });
   canvas.addEventListener("click", () => {
@@ -1861,9 +2076,9 @@ async function main() {
 
       // Update floor material tint based on lights
       const lt = lightsOn ? 1.0 : 0.0;
-      floorMaterialValues[4] = 1.0 + lt * 3.0;  // tint.r
-      floorMaterialValues[5] = 1.0 + lt * 2.8;  // tint.g
-      floorMaterialValues[6] = 1.0 + lt * 2.5;  // tint.b
+      floorMaterialValues[4] = 1.0 + lt * 3.0; // tint.r
+      floorMaterialValues[5] = 1.0 + lt * 2.8; // tint.g
+      floorMaterialValues[6] = 1.0 + lt * 2.5; // tint.b
       floorMaterialValues[2] = lightsOn ? 1.0 : 0.4; // normal_strength
       device.queue.writeBuffer(floorMaterialBuffer, 0, floorMaterialValues);
 
@@ -1888,7 +2103,10 @@ async function main() {
       cameraRight.fromArray(right).normalize();
       cameraUp.fromArray(up).normalize();
       const activeVideoElement = getMountedVideoElement?.();
-      if (activeVideoElement instanceof HTMLVideoElement && activeVideoElement !== videoElement) {
+      if (
+        activeVideoElement instanceof HTMLVideoElement &&
+        activeVideoElement !== videoElement
+      ) {
         videoElement = activeVideoElement;
         videoElement.muted = false;
         videoElement.playsInline = true;
@@ -1999,24 +2217,11 @@ async function main() {
             ? "held"
             : tapeRuntime.state === "inserted"
               ? "held"
-              : tapeRuntime.targetable || (vcrNearby && tapeRuntime.state === "held")
+              : tapeRuntime.targetable ||
+                  (vcrNearby && tapeRuntime.state === "held")
                 ? "targetable"
                 : "idle";
       }
-
-      const keyList = Array.from(pressed).join(", ");
-      const locked = document.pointerLockElement === canvas ? "yes" : "no";
-      const videoState = videoElement.paused ? "paused" : "playing";
-      telemetryEl.textContent =
-        `camera: (${pos[0].toFixed(2)}, ${pos[1].toFixed(2)}, ${pos[2].toFixed(2)})\n` +
-        `pointerLock: ${locked}\n` +
-        `keys: ${keyList || "none"}\n` +
-        `lastKey: ${lastKeyEvent}\n` +
-        `video: ${videoState}${videoRenderError ? ` (${videoRenderError})` : ""}\n` +
-        `boombox: ${boomboxInfo}\n` +
-        `tape: ${tapeRuntime.state}${tapeRuntime.targetable ? " targetable" : ""}\n` +
-        `tape.glb: ${tapeModelInfo}\n` +
-        `player.glb: ${playerModelInfo}`;
 
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({
@@ -2152,14 +2357,11 @@ async function main() {
           pass.setBindGroup(1, videoBindGroup);
           pass.setVertexBuffer(0, videoVertexBuffer);
           pass.draw(videoVertexCount, 1, 0, 0);
-          videoRenderError = "";
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message.includes("back resource")) {
-            videoRenderError = "waiting for video frame";
-          } else {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!message.includes("back resource")) {
             videoRenderEnabled = false;
-            videoRenderError = "video texture import failed";
             status(`Video texture disabled: ${message}`);
           }
         }
