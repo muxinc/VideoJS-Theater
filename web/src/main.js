@@ -3,7 +3,6 @@ import {
   changeVideoSource,
 } from "./videojs-player-host.js";
 import * as THREE from "three";
-import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import "./style.css";
 
@@ -38,14 +37,6 @@ const TAPE_VIDEO_DATA = {
     return `https://image.mux.com/${this.playbackId}/storyboard.png`;
   },
   title: "Demo Reel",
-};
-
-const BOOMBOX_MODEL_CONFIG = {
-  url: "/BoomBox.fbx",
-  targetMaxDim: 2.2,
-  rotation: new THREE.Euler(0.0, -0.22 * Math.PI, 0.0),
-  position: new THREE.Vector3(3.8, 0.0, -9.15),
-  floorOffset: 0.03,
 };
 
 const TAPE_MODEL_CONFIG = {
@@ -1143,8 +1134,14 @@ async function main() {
   let videoRenderEnabled = true;
   let tapeInserted = false;
   let lightsOn = false;
+  const insertTapeMessage =
+    "Turn the lights on and put the VHS tape in the VCR player to play the video.";
 
   playButton.addEventListener("click", () => {
+    if (!tapeInserted) {
+      status(insertTapeMessage);
+      return;
+    }
     videoElement.muted = false;
     const playPromise = videoElement.play();
     playPromise.catch(() => {
@@ -1181,6 +1178,15 @@ async function main() {
   device.addEventListener("uncapturederror", (event) => {
     const message = event.error?.message || "Unknown WebGPU error";
     console.error("Uncaptured WebGPU error:", event.error);
+    if (
+      !tapeInserted &&
+      message.includes(
+        "Destination texture needs to have CopyDst and RenderAttachment usage",
+      )
+    ) {
+      status(insertTapeMessage);
+      return;
+    }
     status(`WebGPU error: ${message}`);
   });
   const context = canvas.getContext("webgpu");
@@ -1640,8 +1646,6 @@ async function main() {
     loadImageTexture(device, "./muxrobots.png"),
   ]);
 
-  let boomboxVertexBuffer = null;
-  let boomboxVertexCount = 0;
   const tapeBaseQuaternion = new THREE.Quaternion().setFromEuler(
     TAPE_MODEL_CONFIG.rotation,
   );
@@ -1662,22 +1666,6 @@ async function main() {
   };
   let playerModelVertexBuffer = null;
   let playerModelVertexCount = 0;
-
-  try {
-    const boomboxMesh = await loadStaticModelVertices({
-      loader: new FBXLoader(),
-      ...BOOMBOX_MODEL_CONFIG,
-    });
-    boomboxVertexBuffer = uploadBuffer(
-      device,
-      boomboxMesh.vertices,
-      GPUBufferUsage.VERTEX,
-    );
-    boomboxVertexCount = boomboxMesh.vertices.length / 3;
-  } catch (error) {
-    console.error("BoomBox.fbx load failed:", error);
-    status(`BoomBox load failed: ${error.message}`);
-  }
 
   try {
     const tapeModelMesh = await loadModelMesh({
@@ -2300,13 +2288,6 @@ async function main() {
       pass.setBindGroup(0, frameCameraBindGroup);
       pass.setVertexBuffer(0, frameVertexBuffer);
       pass.draw(frameVertexCount, 1, 0, 0);
-
-      if (boomboxVertexBuffer && boomboxVertexCount > 0) {
-        pass.setPipeline(boomboxPipeline);
-        pass.setBindGroup(0, boomboxCameraBindGroup);
-        pass.setVertexBuffer(0, boomboxVertexBuffer);
-        pass.draw(boomboxVertexCount, 1, 0, 0);
-      }
 
       if (tapeRuntime.vertexBuffer && tapeRuntime.vertexCount > 0) {
         pass.setPipeline(boomboxPipeline);
