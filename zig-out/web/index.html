@@ -4,12 +4,16 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <title>Zig WebGPU World</title>
-      <script type="module" crossorigin src="/assets/index-6x2Hwj9L.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-B12i7r75.css">
+      <script type="module" crossorigin src="/assets/index-Bk1lC4Xn.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-6vhqIRuA.css">
     </head>
     <body>
         <main class="layout">
             <canvas id="scene" aria-label="WebGPU scene"></canvas>
+            <div id="crosshair" aria-hidden="true">
+                <span></span>
+                <span></span>
+            </div>
             <section class="panel">
                 <h1>VJS 10 Theater</h1>
                 <p id="status">Booting...</p>
@@ -19,11 +23,13 @@
                     <li><strong>Rise / Fall:</strong> E / Q</li>
                     <li><strong>Sprint:</strong> Shift</li>
                     <li><strong>Look:</strong> Mouse</li>
+                    <li><strong>Pickup Tape:</strong> Aim + F</li>
                 </ul>
                 <div class="video-actions">
                     <button id="cursor-lock" type="button">Lock Cursor</button>
                     <button id="video-play" type="button">Play Video</button>
                     <button id="video-pause" type="button">Pause Video</button>
+                    <button id="lights-toggle" type="button">Lights On</button>
                 </div>
                 <div class="video-hidden" id="videojs-player-root" aria-hidden="true"></div>
                 <pre id="telemetry">camera: (0.0, 0.0, 0.0)</pre>

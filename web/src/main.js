@@ -62,6 +62,31 @@ const PLAYER_MODEL_CONFIG = {
   floorOffset: 0.03,
 };
 
+const VIDEO_SCREEN_RECT = Object.freeze({
+  left: -3.4,
+  right: 3.4,
+  top: 3.2,
+  bottom: 0.9,
+  z: -9.79,
+});
+
+const PROJECTOR_CONFIG = Object.freeze({
+  bodyMin: new THREE.Vector3(-0.92, 5.24, 10.95),
+  bodyMax: new THREE.Vector3(0.92, 5.7, 11.78),
+  neckMin: new THREE.Vector3(-0.14, 5.7, 11.14),
+  neckMax: new THREE.Vector3(0.14, 5.92, 11.46),
+  mountMin: new THREE.Vector3(-0.56, 5.92, 11.0),
+  mountMax: new THREE.Vector3(0.56, 6.0, 11.6),
+  lensMin: new THREE.Vector3(-0.24, 5.34, 10.58),
+  lensMax: new THREE.Vector3(0.24, 5.58, 10.95),
+  lensCenter: new THREE.Vector3(0.0, 5.46, 10.58),
+  apertureHalfWidth: 0.16,
+  apertureHalfHeight: 0.1,
+  targetInsetX: 0.32,
+  targetInsetY: 0.18,
+  beamTargetZ: VIDEO_SCREEN_RECT.z + 0.03,
+});
+
 if (!navigator.gpu) {
   statusEl.textContent = "WebGPU is not available in this browser.";
   throw new Error("WebGPU unavailable");
@@ -546,6 +571,164 @@ function uploadBuffer(device, values, usage) {
   return buffer;
 }
 
+function appendCuboidVertices(vertices, min, max) {
+  const x0 = min.x;
+  const y0 = min.y;
+  const z0 = min.z;
+  const x1 = max.x;
+  const y1 = max.y;
+  const z1 = max.z;
+
+  vertices.push(
+    x0, y1, z1, x1, y1, z1, x1, y0, z1,
+    x0, y1, z1, x1, y0, z1, x0, y0, z1,
+
+    x1, y1, z0, x0, y1, z0, x0, y0, z0,
+    x1, y1, z0, x0, y0, z0, x1, y0, z0,
+
+    x0, y1, z0, x0, y1, z1, x0, y0, z1,
+    x0, y1, z0, x0, y0, z1, x0, y0, z0,
+
+    x1, y1, z1, x1, y1, z0, x1, y0, z0,
+    x1, y1, z1, x1, y0, z0, x1, y0, z1,
+
+    x0, y1, z0, x1, y1, z0, x1, y1, z1,
+    x0, y1, z0, x1, y1, z1, x0, y1, z1,
+
+    x0, y0, z1, x1, y0, z1, x1, y0, z0,
+    x0, y0, z1, x1, y0, z0, x0, y0, z0,
+  );
+}
+
+function createProjectorVertices() {
+  const vertices = [];
+  appendCuboidVertices(vertices, PROJECTOR_CONFIG.mountMin, PROJECTOR_CONFIG.mountMax);
+  appendCuboidVertices(vertices, PROJECTOR_CONFIG.neckMin, PROJECTOR_CONFIG.neckMax);
+  appendCuboidVertices(vertices, PROJECTOR_CONFIG.bodyMin, PROJECTOR_CONFIG.bodyMax);
+  appendCuboidVertices(vertices, PROJECTOR_CONFIG.lensMin, PROJECTOR_CONFIG.lensMax);
+  return new Float32Array(vertices);
+}
+
+function appendBeamQuad(vertices, a, b, c, d) {
+  vertices.push(
+    a.x, a.y, a.z, 0.0, 0.0,
+    b.x, b.y, b.z, 1.0, 0.0,
+    c.x, c.y, c.z, 1.0, 1.0,
+    a.x, a.y, a.z, 0.0, 0.0,
+    c.x, c.y, c.z, 1.0, 1.0,
+    d.x, d.y, d.z, 0.0, 1.0,
+  );
+}
+
+function createProjectorBeamVertices() {
+  const source = PROJECTOR_CONFIG.lensCenter;
+  const sourceCorners = [
+    new THREE.Vector3(
+      source.x - PROJECTOR_CONFIG.apertureHalfWidth,
+      source.y + PROJECTOR_CONFIG.apertureHalfHeight,
+      source.z,
+    ),
+    new THREE.Vector3(
+      source.x + PROJECTOR_CONFIG.apertureHalfWidth,
+      source.y + PROJECTOR_CONFIG.apertureHalfHeight,
+      source.z,
+    ),
+    new THREE.Vector3(
+      source.x + PROJECTOR_CONFIG.apertureHalfWidth,
+      source.y - PROJECTOR_CONFIG.apertureHalfHeight,
+      source.z,
+    ),
+    new THREE.Vector3(
+      source.x - PROJECTOR_CONFIG.apertureHalfWidth,
+      source.y - PROJECTOR_CONFIG.apertureHalfHeight,
+      source.z,
+    ),
+  ];
+  const targetCorners = [
+    new THREE.Vector3(
+      VIDEO_SCREEN_RECT.left + PROJECTOR_CONFIG.targetInsetX,
+      VIDEO_SCREEN_RECT.top - PROJECTOR_CONFIG.targetInsetY,
+      PROJECTOR_CONFIG.beamTargetZ,
+    ),
+    new THREE.Vector3(
+      VIDEO_SCREEN_RECT.right - PROJECTOR_CONFIG.targetInsetX,
+      VIDEO_SCREEN_RECT.top - PROJECTOR_CONFIG.targetInsetY,
+      PROJECTOR_CONFIG.beamTargetZ,
+    ),
+    new THREE.Vector3(
+      VIDEO_SCREEN_RECT.right - PROJECTOR_CONFIG.targetInsetX,
+      VIDEO_SCREEN_RECT.bottom + PROJECTOR_CONFIG.targetInsetY,
+      PROJECTOR_CONFIG.beamTargetZ,
+    ),
+    new THREE.Vector3(
+      VIDEO_SCREEN_RECT.left + PROJECTOR_CONFIG.targetInsetX,
+      VIDEO_SCREEN_RECT.bottom + PROJECTOR_CONFIG.targetInsetY,
+      PROJECTOR_CONFIG.beamTargetZ,
+    ),
+  ];
+
+  const vertices = [];
+  for (let i = 0; i < 4; i += 1) {
+    const next = (i + 1) % 4;
+    appendBeamQuad(
+      vertices,
+      sourceCorners[i],
+      sourceCorners[next],
+      targetCorners[next],
+      targetCorners[i],
+    );
+  }
+
+  return new Float32Array(vertices);
+}
+
+function getProjectorBeamShaderCode() {
+  return /* wgsl */ `
+struct Camera {
+  view_proj: mat4x4<f32>,
+};
+
+struct ProjectorLight {
+  intensity: f32,
+  _pad0: vec3<f32>,
+};
+
+@group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(1) var<uniform> projector_light: ProjectorLight;
+
+struct VsIn {
+  @location(0) position: vec3<f32>,
+  @location(1) uv: vec2<f32>,
+};
+
+struct VsOut {
+  @builtin(position) clip_position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+  @location(1) world_pos: vec3<f32>,
+};
+
+@vertex
+fn vs_main(in: VsIn) -> VsOut {
+  var out: VsOut;
+  out.uv = in.uv;
+  out.world_pos = in.position;
+  out.clip_position = camera.view_proj * vec4<f32>(in.position, 1.0);
+  return out;
+}
+
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+  let edge_fade = smoothstep(0.0, 0.18, in.uv.x) * (1.0 - smoothstep(0.82, 1.0, in.uv.x));
+  let near_fade = smoothstep(0.02, 0.18, in.uv.y);
+  let far_fade = 1.0 - smoothstep(0.7, 1.0, in.uv.y);
+  let shimmer = 0.88 + 0.12 * sin(in.world_pos.z * 0.55 + in.world_pos.y * 4.0);
+  let alpha = projector_light.intensity * edge_fade * near_fade * (0.45 + far_fade * 0.55) * shimmer * 0.18;
+  let color = vec3<f32>(0.72, 0.8, 1.0) * (0.35 + near_fade * 0.65);
+  return vec4<f32>(color, alpha);
+}
+`;
+}
+
 function status(message) {
   baseStatusMessage = message;
   renderStatus();
@@ -826,10 +1009,16 @@ async function main() {
   const curtainShaderCode = getCurtainShaderFromZig(wasm);
   const seatShaderCode = getSeatShaderFromZig(wasm);
   const posterShaderCode = getPosterShaderFromZig(wasm);
+  const projectorBeamShaderCode = getProjectorBeamShaderCode();
 
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error("No WebGPU adapter available");
   const device = await adapter.requestDevice();
+  device.addEventListener("uncapturederror", (event) => {
+    const message = event.error?.message || "Unknown WebGPU error";
+    console.error("Uncaptured WebGPU error:", event.error);
+    status(`WebGPU error: ${message}`);
+  });
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
 
@@ -1033,6 +1222,53 @@ async function main() {
   const curtainPipeline = createSimplePipeline(curtainShaderCode);
   const seatPipeline = createSimplePipeline(seatShaderCode);
 
+  const projectorBeamModule = device.createShaderModule({
+    code: projectorBeamShaderCode,
+  });
+  const projectorBeamPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: projectorBeamModule,
+      entryPoint: "vs_main",
+      buffers: [
+        {
+          arrayStride: 20,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: "float32x3" },
+            { shaderLocation: 1, offset: 12, format: "float32x2" },
+          ],
+        },
+      ],
+    },
+    fragment: {
+      module: projectorBeamModule,
+      entryPoint: "fs_main",
+      targets: [
+        {
+          format,
+          blend: {
+            color: {
+              srcFactor: "src-alpha",
+              dstFactor: "one",
+              operation: "add",
+            },
+            alpha: {
+              srcFactor: "one",
+              dstFactor: "one-minus-src-alpha",
+              operation: "add",
+            },
+          },
+        },
+      ],
+    },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: {
+      format: "depth24plus",
+      depthWriteEnabled: false,
+      depthCompare: "less",
+    },
+  });
+
   const posterModule = device.createShaderModule({ code: posterShaderCode });
   const posterPipeline = device.createRenderPipeline({
     layout: "auto",
@@ -1132,6 +1368,22 @@ async function main() {
   );
   const seatVertexBuffer = uploadBuffer(device, new Float32Array(seatVerts), GPUBufferUsage.VERTEX);
   const seatVertexCount = wasm.seat_vertex_count();
+
+  const projectorVertices = createProjectorVertices();
+  const projectorVertexBuffer = uploadBuffer(
+    device,
+    projectorVertices,
+    GPUBufferUsage.VERTEX,
+  );
+  const projectorVertexCount = projectorVertices.length / 3;
+
+  const projectorBeamVertices = createProjectorBeamVertices();
+  const projectorBeamVertexBuffer = uploadBuffer(
+    device,
+    projectorBeamVertices,
+    GPUBufferUsage.VERTEX,
+  );
+  const projectorBeamVertexCount = projectorBeamVertices.length / 5;
 
   // Poster vertex buffers (5 floats per vert: pos3 + uv2)
   const poster0Verts = new Float32Array(wasm.memory.buffer, wasm.poster_0_vertex_ptr(), wasm.poster_0_vertex_len());
@@ -1334,6 +1586,19 @@ async function main() {
       { binding: 1, resource: { buffer: roomLightBuffer } },
     ],
   });
+  const projectorLightBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  const projectorLightValues = new Float32Array([0.0, 0.0, 0.0, 0.0]);
+  device.queue.writeBuffer(projectorLightBuffer, 0, projectorLightValues);
+  const projectorBeamBindGroup = device.createBindGroup({
+    layout: projectorBeamPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: projectorLightBuffer } },
+    ],
+  });
   const posterCameraBindGroup = device.createBindGroup({
     layout: posterPipeline.getBindGroupLayout(0),
     entries: [
@@ -1428,6 +1693,96 @@ async function main() {
   const toTape = new THREE.Vector3();
   const cameraBasisMatrix = new THREE.Matrix4();
 
+  function performTapeAction() {
+    if (tapeRuntime.state === "held" && vcrNearby) {
+      tapeRuntime.state = "inserted";
+      tapeRuntime.targetable = false;
+      tapeInserted = true;
+
+      if (tapeRuntime.worldVertices) {
+        tapeRuntime.worldVertices.fill(0);
+        device.queue.writeBuffer(
+          tapeRuntime.vertexBuffer,
+          0,
+          tapeRuntime.worldVertices,
+        );
+      }
+
+      const activeVid = getMountedVideoElement?.() ?? videoElement;
+      if (activeVid instanceof HTMLVideoElement) {
+        videoElement = activeVid;
+      }
+      const playPromise = changeVideoSource(
+        videoElement,
+        TAPE_VIDEO_DATA.src,
+        TAPE_VIDEO_DATA.poster,
+      );
+      if (playPromise) {
+        playPromise.catch(() => {
+          status(`Tape inserted. Press Play to start ${TAPE_VIDEO_DATA.title}.`);
+        });
+      }
+      videoRenderEnabled = true;
+      status(`Now playing: ${TAPE_VIDEO_DATA.title}`);
+      return true;
+    }
+
+    if (tapeRuntime.state === "inserted" && vcrNearby) {
+      tapeRuntime.state = "held";
+      tapeInserted = false;
+
+      videoElement.pause();
+      videoElement.removeAttribute("src");
+      videoElement.load();
+      status("Tape ejected.");
+      return true;
+    }
+
+    if (tapeRuntime.state === "held" && !vcrNearby) {
+      const dropForward = new THREE.Vector3(
+        cameraForward.x,
+        0.0,
+        cameraForward.z,
+      ).normalize();
+      const dropPos = new THREE.Vector3()
+        .copy(cameraPosition)
+        .addScaledVector(dropForward, TAPE_DROP_DISTANCE);
+      dropPos.y = 0.0;
+
+      tapeRuntime.worldPosition.copy(dropPos);
+      tapeRuntime.worldQuaternion.copy(tapeBaseQuaternion);
+
+      const dropVertices = bakeModelVertices(
+        tapeRuntime.localVertices,
+        tapeRuntime.worldPosition,
+        TAPE_MODEL_CONFIG.rotation,
+      );
+      tapeRuntime.worldVertices.set(dropVertices);
+      device.queue.writeBuffer(
+        tapeRuntime.vertexBuffer,
+        0,
+        tapeRuntime.worldVertices,
+      );
+
+      tapeRuntime.state = "world";
+      tapeRuntime.targetable = false;
+      return true;
+    }
+
+    if (tapeRuntime.state === "world" && tapeRuntime.targetable) {
+      tapeRuntime.state = "held";
+      tapeRuntime.targetable = false;
+      return true;
+    }
+
+    if (tapeRuntime.state === "world") {
+      tapePickupQueued = true;
+      return true;
+    }
+
+    return false;
+  }
+
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
@@ -1445,7 +1800,9 @@ async function main() {
     lastKeyEvent = `down:${event.code}`;
     pressed.add(event.code);
     if (event.code === "KeyF" && !event.repeat) {
-      tapeActionQueued = true;
+      if (!performTapeAction()) {
+        tapeActionQueued = true;
+      }
     }
   });
   document.addEventListener("keyup", (event) => {
@@ -1537,6 +1894,14 @@ async function main() {
         videoElement.playsInline = true;
         videoElement.loop = true;
       }
+      const projectorActive =
+        tapeInserted &&
+        videoElement.readyState >= 2 &&
+        videoElement.videoWidth > 0 &&
+        videoElement.videoHeight > 0 &&
+        !videoElement.paused;
+      projectorLightValues[0] = projectorActive ? 1.0 : 0.0;
+      device.queue.writeBuffer(projectorLightBuffer, 0, projectorLightValues);
 
       // -- VCR proximity detection --
       toVcr.subVectors(VCR_POSITION, cameraPosition);
@@ -1551,78 +1916,7 @@ async function main() {
 
       // -- Handle F key action based on current state --
       if (tapeActionQueued) {
-        if (tapeRuntime.state === "held" && vcrNearby) {
-          // INSERT tape into VCR: hide tape mesh, load video, play
-          tapeRuntime.state = "inserted";
-          tapeRuntime.targetable = false;
-          tapeInserted = true;
-
-          // Move tape vertices off-screen so it disappears
-          if (tapeRuntime.worldVertices) {
-            tapeRuntime.worldVertices.fill(0);
-            device.queue.writeBuffer(
-              tapeRuntime.vertexBuffer,
-              0,
-              tapeRuntime.worldVertices,
-            );
-          }
-
-          const activeVid = getMountedVideoElement?.() ?? videoElement;
-          if (activeVid instanceof HTMLVideoElement) {
-            videoElement = activeVid;
-          }
-          changeVideoSource(
-            videoElement,
-            TAPE_VIDEO_DATA.src,
-            TAPE_VIDEO_DATA.poster,
-          );
-          videoRenderEnabled = true;
-          status(`Now playing: ${TAPE_VIDEO_DATA.title}`);
-
-        } else if (tapeRuntime.state === "inserted" && vcrNearby) {
-          // EJECT tape from VCR: stop video, give tape back to hand
-          tapeRuntime.state = "held";
-          tapeInserted = false;
-
-          videoElement.pause();
-          videoElement.removeAttribute("src");
-          videoElement.load();
-          status("Tape ejected.");
-
-        } else if (tapeRuntime.state === "held" && !vcrNearby) {
-          // DROP tape on ground
-          const dropForward = new THREE.Vector3(
-            cameraForward.x,
-            0.0,
-            cameraForward.z,
-          ).normalize();
-          const dropPos = new THREE.Vector3()
-            .copy(cameraPosition)
-            .addScaledVector(dropForward, TAPE_DROP_DISTANCE);
-          dropPos.y = 0.0;
-
-          tapeRuntime.worldPosition.copy(dropPos);
-          tapeRuntime.worldQuaternion.copy(tapeBaseQuaternion);
-
-          const dropVertices = bakeModelVertices(
-            tapeRuntime.localVertices,
-            tapeRuntime.worldPosition,
-            TAPE_MODEL_CONFIG.rotation,
-          );
-          tapeRuntime.worldVertices.set(dropVertices);
-          device.queue.writeBuffer(
-            tapeRuntime.vertexBuffer,
-            0,
-            tapeRuntime.worldVertices,
-          );
-
-          tapeRuntime.state = "world";
-          tapeRuntime.targetable = false;
-
-        } else if (tapeRuntime.state === "world") {
-          // PICKUP tape from ground (handled below via targetable check)
-          tapePickupQueued = true;
-        }
+        performTapeAction();
       }
       tapeActionQueued = false;
 
@@ -1822,6 +2116,11 @@ async function main() {
         pass.setVertexBuffer(0, playerModelVertexBuffer);
         pass.draw(playerModelVertexCount, 1, 0, 0);
       }
+
+      pass.setPipeline(boomboxPipeline);
+      pass.setBindGroup(0, boomboxCameraBindGroup);
+      pass.setVertexBuffer(0, projectorVertexBuffer);
+      pass.draw(projectorVertexCount, 1, 0, 0);
 
       pass.setPipeline(archTextPipeline);
       pass.setBindGroup(0, archTextCameraBindGroup);

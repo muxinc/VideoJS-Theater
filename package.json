@@ -6,6 +6,7 @@
     "wasm:sync": "zig build wasm && node scripts/sync-wasm.mjs",
     "dev": "npm run wasm:sync && vite --config web/vite.config.js",
     "build": "npm run wasm:sync && vite build --config web/vite.config.js",
+    "build:vercel": "vite build --config web/vite.config.js",
     "preview": "vite preview --config web/vite.config.js"
   },
   "dependencies": {

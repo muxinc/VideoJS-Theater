@@ -39,7 +39,7 @@ function configureVideoElement(videoElement, src, poster) {
 }
 
 export function changeVideoSource(videoElement, src, poster) {
-  if (!videoElement) return;
+  if (!videoElement) return null;
   videoElement.pause();
   videoElement.removeAttribute("src");
   videoElement.load();
@@ -59,6 +59,7 @@ export function changeVideoSource(videoElement, src, poster) {
   if (playPromise) {
     playPromise.catch(() => {});
   }
+  return playPromise ?? null;
 }
 
 export async function mountHiddenVideoJsPlayer(options = {}) {
