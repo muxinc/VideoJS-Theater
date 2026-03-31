@@ -11,6 +11,7 @@ const crosshairEl = document.getElementById("crosshair");
 const cursorLockButton = document.getElementById("cursor-lock");
 const playButton = document.getElementById("video-play");
 const pauseButton = document.getElementById("video-pause");
+const lightsButton = document.getElementById("lights-toggle");
 
 const TAPE_PICKUP_RADIUS = 2.25;
 const TAPE_PICKUP_DOT_THRESHOLD = 0.96;
@@ -164,6 +165,67 @@ function getArchTextShaderFromZig(exports) {
   return source;
 }
 
+function getWallShaderFromZig(exports) {
+  const packed = exports.wall_shader_wgsl();
+  const { ptr, len } = unpackResult(packed);
+  if (!ptr || !len) {
+    throw new Error(readError(exports) || "wall shader export returned empty");
+  }
+  const source = readString(exports.memory, ptr, len);
+  exports.free(ptr, len);
+  return source;
+}
+
+function getCurtainShaderFromZig(exports) {
+  const packed = exports.curtain_shader_wgsl();
+  const { ptr, len } = unpackResult(packed);
+  if (!ptr || !len) {
+    throw new Error(readError(exports) || "curtain shader export returned empty");
+  }
+  const source = readString(exports.memory, ptr, len);
+  exports.free(ptr, len);
+  return source;
+}
+
+function getSeatShaderFromZig(exports) {
+  const packed = exports.seat_shader_wgsl();
+  const { ptr, len } = unpackResult(packed);
+  if (!ptr || !len) {
+    throw new Error(readError(exports) || "seat shader export returned empty");
+  }
+  const source = readString(exports.memory, ptr, len);
+  exports.free(ptr, len);
+  return source;
+}
+
+function getPosterShaderFromZig(exports) {
+  const packed = exports.poster_shader_wgsl();
+  const { ptr, len } = unpackResult(packed);
+  if (!ptr || !len) {
+    throw new Error(readError(exports) || "poster shader export returned empty");
+  }
+  const source = readString(exports.memory, ptr, len);
+  exports.free(ptr, len);
+  return source;
+}
+
+async function loadImageTexture(device, url) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+  const texture = device.createTexture({
+    size: [bitmap.width, bitmap.height, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  device.queue.copyExternalImageToTexture(
+    { source: bitmap },
+    { texture },
+    [bitmap.width, bitmap.height],
+  );
+  return texture;
+}
+
 function createDepthTexture(device, width, height) {
   return device.createTexture({
     size: [width, height, 1],
@@ -228,12 +290,21 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let ndotl = max(dot(normal_ws, sun_dir), 0.0);
   let half_vec = normalize(sun_dir + view_dir);
 
-  let spec_power = mix(128.0, 24.0, roughness);
-  let specular = pow(max(dot(normal_ws, half_vec), 0.0), spec_power) * (1.0 - roughness) * 0.18;
+  let spec_power = mix(64.0, 12.0, roughness);
+  let specular = pow(max(dot(normal_ws, half_vec), 0.0), spec_power) * (1.0 - roughness) * 0.06;
   let hemi = clamp(normal_ws.y * 0.5 + 0.5, 0.0, 1.0);
-  let ambient = mix(vec3<f32>(0.08, 0.06, 0.04), vec3<f32>(0.22, 0.18, 0.13), hemi);
+  let ambient = mix(vec3<f32>(0.02, 0.015, 0.01), vec3<f32>(0.06, 0.05, 0.04), hemi);
 
-  let color = albedo * (0.25 + 0.75 * ndotl) + albedo * ambient * 0.5 + vec3<f32>(specular);
+  var color = albedo * (0.08 + 0.35 * ndotl) + albedo * ambient * 0.4 + vec3<f32>(specular);
+
+  // TV screen glow: soft light projected onto floor from screen center
+  let screen_center = vec3<f32>(0.0, 2.0, -9.8);
+  let to_screen = vec3<f32>(in.uv.x / floor_material.uv_scale.x, 0.0, in.uv.y / floor_material.uv_scale.y) - screen_center;
+  let screen_dist = length(to_screen);
+  let glow_strength = clamp(1.0 / (1.0 + screen_dist * screen_dist * 0.08), 0.0, 1.0);
+  let screen_glow = vec3<f32>(0.15, 0.18, 0.25) * glow_strength * 0.3;
+  color = color + screen_glow;
+
   return vec4<f32>(color, 1.0);
 }
 `;
@@ -362,12 +433,11 @@ function createWoodFloorTextures(device, size = 512) {
       const isVJoint = jointDist < JOINT_WIDTH;
       const isSeam = isHSeam || isVJoint;
 
-      // Per-plank base wood colors (warm brown spectrum)
+      // Dark theater carpet: deep burgundy/charcoal tones
       const shift = plank.colorShift;
-      // Darker planks: reddish-brown, lighter planks: honey/amber
-      const baseR = 130 + shift * 45 + h * 40;
-      const baseG = 85 + shift * 30 + h * 28;
-      const baseB = 48 + shift * 15 + h * 15;
+      const baseR = 38 + shift * 18 + h * 15;
+      const baseG = 16 + shift * 8 + h * 8;
+      const baseB = 22 + shift * 12 + h * 10;
 
       // Knot darkening
       const knotCx = size * (0.2 + hash2D(plankIdx, 3, 19.0) * 0.6);
@@ -378,10 +448,10 @@ function createWoodFloorTextures(device, size = 512) {
 
       let r, g, b;
       if (isSeam) {
-        // Seams are darker, slightly cooler
-        r = baseR * 0.35;
-        g = baseG * 0.3;
-        b = baseB * 0.35;
+        // Seams barely visible on carpet
+        r = baseR * 0.7;
+        g = baseG * 0.65;
+        b = baseB * 0.7;
       } else {
         r = baseR * knotMul;
         g = baseG * knotMul;
@@ -406,12 +476,12 @@ function createWoodFloorTextures(device, size = 512) {
       normalData[idx4 + 2] = Math.round(((nz / normalLen) * 0.5 + 0.5) * 255);
       normalData[idx4 + 3] = 255;
 
-      // Roughness: seams rougher, polished wood smoother, knots rougher
+      // Roughness: carpet is uniformly matte
       let roughness;
       if (isSeam) {
-        roughness = 0.75;
+        roughness = 0.92;
       } else {
-        roughness = 0.25 + h * 0.15 + knotDarken * 0.2;
+        roughness = 0.78 + h * 0.12 + knotDarken * 0.08;
       }
       roughnessData[idx] = Math.round(Math.max(0, Math.min(1, roughness)) * 255);
     }
@@ -725,6 +795,7 @@ async function main() {
   let videoRenderEnabled = true;
   let videoRenderError = "";
   let tapeInserted = false;
+  let lightsOn = false;
 
   playButton.addEventListener("click", () => {
     videoElement.muted = false;
@@ -739,6 +810,10 @@ async function main() {
   cursorLockButton.addEventListener("click", () => {
     canvas.requestPointerLock();
   });
+  lightsButton.addEventListener("click", () => {
+    lightsOn = !lightsOn;
+    lightsButton.textContent = lightsOn ? "Lights Off" : "Lights On";
+  });
 
   const { instance } = await instantiateZigWasm("./webgpu_world.wasm");
   const wasm = instance.exports;
@@ -747,6 +822,10 @@ async function main() {
   const boomboxShaderCode = getBoomBoxShaderFromZig(wasm);
   const archTextShaderCode = getArchTextShaderFromZig(wasm);
   const videoShaderCode = getVideoShaderFromZig(wasm);
+  const wallShaderCode = getWallShaderFromZig(wasm);
+  const curtainShaderCode = getCurtainShaderFromZig(wasm);
+  const seatShaderCode = getSeatShaderFromZig(wasm);
+  const posterShaderCode = getPosterShaderFromZig(wasm);
 
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error("No WebGPU adapter available");
@@ -922,6 +1001,67 @@ async function main() {
     },
   });
 
+  function createSimplePipeline(shaderCode) {
+    const module = device.createShaderModule({ code: shaderCode });
+    return device.createRenderPipeline({
+      layout: "auto",
+      vertex: {
+        module,
+        entryPoint: "vs_main",
+        buffers: [
+          {
+            arrayStride: 12,
+            attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }],
+          },
+        ],
+      },
+      fragment: {
+        module,
+        entryPoint: "fs_main",
+        targets: [{ format }],
+      },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: {
+        format: "depth24plus",
+        depthWriteEnabled: true,
+        depthCompare: "less",
+      },
+    });
+  }
+
+  const wallPipeline = createSimplePipeline(wallShaderCode);
+  const curtainPipeline = createSimplePipeline(curtainShaderCode);
+  const seatPipeline = createSimplePipeline(seatShaderCode);
+
+  const posterModule = device.createShaderModule({ code: posterShaderCode });
+  const posterPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: posterModule,
+      entryPoint: "vs_main",
+      buffers: [
+        {
+          arrayStride: 20,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: "float32x3" },
+            { shaderLocation: 1, offset: 12, format: "float32x2" },
+          ],
+        },
+      ],
+    },
+    fragment: {
+      module: posterModule,
+      entryPoint: "fs_main",
+      targets: [{ format }],
+    },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: {
+      format: "depth24plus",
+      depthWriteEnabled: true,
+      depthCompare: "less",
+    },
+  });
+
   const floorVertices = new Float32Array(
     wasm.memory.buffer,
     wasm.floor_vertex_ptr(),
@@ -965,6 +1105,64 @@ async function main() {
     GPUBufferUsage.VERTEX,
   );
   const archTextVertexCount = archTextVertices.length / 5;
+
+  // Wall vertices
+  const wallVerts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.wall_vertex_ptr(),
+    wasm.wall_vertex_len(),
+  );
+  const wallVertexBuffer = uploadBuffer(device, new Float32Array(wallVerts), GPUBufferUsage.VERTEX);
+  const wallVertexCount = wasm.wall_vertex_count();
+
+  // Curtain vertices
+  const curtainVerts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.curtain_vertex_ptr(),
+    wasm.curtain_vertex_len(),
+  );
+  const curtainVertexBuffer = uploadBuffer(device, new Float32Array(curtainVerts), GPUBufferUsage.VERTEX);
+  const curtainVertexCount = wasm.curtain_vertex_count();
+
+  // Seat vertices
+  const seatVerts = new Float32Array(
+    wasm.memory.buffer,
+    wasm.seat_vertex_ptr(),
+    wasm.seat_vertex_len(),
+  );
+  const seatVertexBuffer = uploadBuffer(device, new Float32Array(seatVerts), GPUBufferUsage.VERTEX);
+  const seatVertexCount = wasm.seat_vertex_count();
+
+  // Poster vertex buffers (5 floats per vert: pos3 + uv2)
+  const poster0Verts = new Float32Array(wasm.memory.buffer, wasm.poster_0_vertex_ptr(), wasm.poster_0_vertex_len());
+  const poster0VertexBuffer = uploadBuffer(device, new Float32Array(poster0Verts), GPUBufferUsage.VERTEX);
+  const poster1Verts = new Float32Array(wasm.memory.buffer, wasm.poster_1_vertex_ptr(), wasm.poster_1_vertex_len());
+  const poster1VertexBuffer = uploadBuffer(device, new Float32Array(poster1Verts), GPUBufferUsage.VERTEX);
+  const poster2Verts = new Float32Array(wasm.memory.buffer, wasm.poster_2_vertex_ptr(), wasm.poster_2_vertex_len());
+  const poster2VertexBuffer = uploadBuffer(device, new Float32Array(poster2Verts), GPUBufferUsage.VERTEX);
+  const posterVertexCount = 6; // 2 triangles per poster
+
+  // Load left wall poster textures
+  const [posterTex0, posterTex1, posterTex2] = await Promise.all([
+    loadImageTexture(device, "./twoOldPeople.png"),
+    loadImageTexture(device, "./catzilla.png"),
+    loadImageTexture(device, "./bunny.jpg"),
+  ]);
+
+  // Right wall poster vertex buffers
+  const rposter0Verts = new Float32Array(wasm.memory.buffer, wasm.rposter_0_vertex_ptr(), wasm.rposter_0_vertex_len());
+  const rposter0VertexBuffer = uploadBuffer(device, new Float32Array(rposter0Verts), GPUBufferUsage.VERTEX);
+  const rposter1Verts = new Float32Array(wasm.memory.buffer, wasm.rposter_1_vertex_ptr(), wasm.rposter_1_vertex_len());
+  const rposter1VertexBuffer = uploadBuffer(device, new Float32Array(rposter1Verts), GPUBufferUsage.VERTEX);
+  const rposter2Verts = new Float32Array(wasm.memory.buffer, wasm.rposter_2_vertex_ptr(), wasm.rposter_2_vertex_len());
+  const rposter2VertexBuffer = uploadBuffer(device, new Float32Array(rposter2Verts), GPUBufferUsage.VERTEX);
+
+  // Load right wall poster textures
+  const [rposterTex0, rposterTex1, rposterTex2] = await Promise.all([
+    loadImageTexture(device, "./water.png"),
+    loadImageTexture(device, "./mediachrome.png"),
+    loadImageTexture(device, "./muxrobots.png"),
+  ]);
 
   let boomboxVertexBuffer = null;
   let boomboxVertexCount = 0;
@@ -1075,7 +1273,7 @@ async function main() {
   });
   const floorMaterialValues = new Float32Array([
     // uv_scale.x, uv_scale.y, normal_strength, roughness_bias, tint.r, tint.g, tint.b, pad
-    3.0, 3.0, 0.85, -0.05, 1.05, 0.95, 0.85, 0.0,
+    4.0, 4.0, 0.4, 0.1, 1.0, 1.0, 1.0, 0.0,
   ]);
   const floorMaterialBuffer = device.createBuffer({
     size: floorMaterialValues.byteLength,
@@ -1108,6 +1306,88 @@ async function main() {
     layout: archTextPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: cameraBuffer } }],
   });
+  const roomLightBuffer = device.createBuffer({
+    size: 16, // f32 brightness + 12 bytes padding (min uniform size is 16)
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  const roomLightValues = new Float32Array([0.0, 0.0, 0.0, 0.0]);
+  device.queue.writeBuffer(roomLightBuffer, 0, roomLightValues);
+
+  const wallCameraBindGroup = device.createBindGroup({
+    layout: wallPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const curtainCameraBindGroup = device.createBindGroup({
+    layout: curtainPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const seatCameraBindGroup = device.createBindGroup({
+    layout: seatPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const posterCameraBindGroup = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const posterSampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+  });
+  const posterBindGroup0 = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(1),
+    entries: [
+      { binding: 0, resource: posterSampler },
+      { binding: 1, resource: posterTex0.createView() },
+    ],
+  });
+  const posterBindGroup1 = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(1),
+    entries: [
+      { binding: 0, resource: posterSampler },
+      { binding: 1, resource: posterTex1.createView() },
+    ],
+  });
+  const posterBindGroup2 = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(1),
+    entries: [
+      { binding: 0, resource: posterSampler },
+      { binding: 1, resource: posterTex2.createView() },
+    ],
+  });
+  const rposterBindGroup0 = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(1),
+    entries: [
+      { binding: 0, resource: posterSampler },
+      { binding: 1, resource: rposterTex0.createView() },
+    ],
+  });
+  const rposterBindGroup1 = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(1),
+    entries: [
+      { binding: 0, resource: posterSampler },
+      { binding: 1, resource: rposterTex1.createView() },
+    ],
+  });
+  const rposterBindGroup2 = device.createBindGroup({
+    layout: posterPipeline.getBindGroupLayout(1),
+    entries: [
+      { binding: 0, resource: posterSampler },
+      { binding: 1, resource: rposterTex2.createView() },
+    ],
+  });
+
   const videoSampler = device.createSampler({
     magFilter: "linear",
     minFilter: "linear",
@@ -1216,6 +1496,19 @@ async function main() {
         new Float32Array(wasm.memory.buffer, wasm.camera_matrix_ptr(), 16),
       );
       device.queue.writeBuffer(cameraBuffer, 0, cameraValues);
+
+      // Update room light brightness
+      const targetBrightness = lightsOn ? 1.0 : 0.0;
+      roomLightValues[0] = targetBrightness;
+      device.queue.writeBuffer(roomLightBuffer, 0, roomLightValues);
+
+      // Update floor material tint based on lights
+      const lt = lightsOn ? 1.0 : 0.0;
+      floorMaterialValues[4] = 1.0 + lt * 3.0;  // tint.r
+      floorMaterialValues[5] = 1.0 + lt * 2.8;  // tint.g
+      floorMaterialValues[6] = 1.0 + lt * 2.5;  // tint.b
+      floorMaterialValues[2] = lightsOn ? 1.0 : 0.4; // normal_strength
+      device.queue.writeBuffer(floorMaterialBuffer, 0, floorMaterialValues);
 
       const pos = new Float32Array(
         wasm.memory.buffer,
@@ -1436,7 +1729,9 @@ async function main() {
         colorAttachments: [
           {
             view: context.getCurrentTexture().createView(),
-            clearValue: { r: 0.58, g: 0.72, b: 0.87, a: 1.0 },
+            clearValue: lightsOn
+              ? { r: 0.25, g: 0.22, b: 0.18, a: 1.0 }
+              : { r: 0.015, g: 0.015, b: 0.02, a: 1.0 },
             loadOp: "clear",
             storeOp: "store",
           },
@@ -1454,6 +1749,53 @@ async function main() {
       pass.setBindGroup(1, floorMaterialBindGroup);
       pass.setVertexBuffer(0, floorVertexBuffer);
       pass.draw(floorVertexCount, 1, 0, 0);
+
+      // Theater room: walls + ceiling
+      pass.setPipeline(wallPipeline);
+      pass.setBindGroup(0, wallCameraBindGroup);
+      pass.setVertexBuffer(0, wallVertexBuffer);
+      pass.draw(wallVertexCount, 1, 0, 0);
+
+      // Curtains
+      pass.setPipeline(curtainPipeline);
+      pass.setBindGroup(0, curtainCameraBindGroup);
+      pass.setVertexBuffer(0, curtainVertexBuffer);
+      pass.draw(curtainVertexCount, 1, 0, 0);
+
+      // Theater seats
+      pass.setPipeline(seatPipeline);
+      pass.setBindGroup(0, seatCameraBindGroup);
+      pass.setVertexBuffer(0, seatVertexBuffer);
+      pass.draw(seatVertexCount, 1, 0, 0);
+
+      // Movie posters on left wall
+      pass.setPipeline(posterPipeline);
+      pass.setBindGroup(0, posterCameraBindGroup);
+
+      pass.setBindGroup(1, posterBindGroup0);
+      pass.setVertexBuffer(0, poster0VertexBuffer);
+      pass.draw(posterVertexCount, 1, 0, 0);
+
+      pass.setBindGroup(1, posterBindGroup1);
+      pass.setVertexBuffer(0, poster1VertexBuffer);
+      pass.draw(posterVertexCount, 1, 0, 0);
+
+      pass.setBindGroup(1, posterBindGroup2);
+      pass.setVertexBuffer(0, poster2VertexBuffer);
+      pass.draw(posterVertexCount, 1, 0, 0);
+
+      // Right wall posters
+      pass.setBindGroup(1, rposterBindGroup0);
+      pass.setVertexBuffer(0, rposter0VertexBuffer);
+      pass.draw(posterVertexCount, 1, 0, 0);
+
+      pass.setBindGroup(1, rposterBindGroup1);
+      pass.setVertexBuffer(0, rposter1VertexBuffer);
+      pass.draw(posterVertexCount, 1, 0, 0);
+
+      pass.setBindGroup(1, rposterBindGroup2);
+      pass.setVertexBuffer(0, rposter2VertexBuffer);
+      pass.draw(posterVertexCount, 1, 0, 0);
 
       pass.setPipeline(framePipeline);
       pass.setBindGroup(0, frameCameraBindGroup);

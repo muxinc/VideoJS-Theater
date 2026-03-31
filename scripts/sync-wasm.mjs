@@ -17,6 +17,30 @@ const assetCopies = [
     source: path.resolve("player.glb"),
     dest: path.join(destDir, "player.glb"),
   },
+  {
+    source: path.resolve("twoOldPeople.png"),
+    dest: path.join(destDir, "twoOldPeople.png"),
+  },
+  {
+    source: path.resolve("catzilla.png"),
+    dest: path.join(destDir, "catzilla.png"),
+  },
+  {
+    source: path.resolve("bunny.jpg"),
+    dest: path.join(destDir, "bunny.jpg"),
+  },
+  {
+    source: path.resolve("water.png"),
+    dest: path.join(destDir, "water.png"),
+  },
+  {
+    source: path.resolve("mediachrome.png"),
+    dest: path.join(destDir, "mediachrome.png"),
+  },
+  {
+    source: path.resolve("muxrobots.png"),
+    dest: path.join(destDir, "muxrobots.png"),
+  },
 ];
 
 await fs.mkdir(destDir, { recursive: true });

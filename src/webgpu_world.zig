@@ -3,28 +3,200 @@ const std = @import("std");
 const wasm_alloc = std.heap.wasm_allocator;
 
 const floor_vertices = [_]f32{
-    -120.0, 0.0, -120.0,
-    120.0, 0.0, -120.0,
-    120.0, 0.0, 120.0,
-    -120.0, 0.0, -120.0,
-    120.0, 0.0, 120.0,
-    -120.0, 0.0, 120.0,
+    -15.0, 0.0, -10.5,
+    15.0,  0.0, -10.5,
+    15.0,  0.0, 15.0,
+    -15.0, 0.0, -10.5,
+    15.0,  0.0, 15.0,
+    -15.0, 0.0, 15.0,
 };
 
 const tv_frame_vertices = cuboidVertices(
-    -3.95, 3.95,
-    0.55, 3.55,
-    -10.35, -9.85,
+    -3.95,
+    3.95,
+    0.55,
+    3.55,
+    -10.35,
+    -9.85,
 );
 
 const video_quad_vertices = [_]f32{
     -3.4, 3.2, -9.79, 0.0, 0.0,
-    3.4, 3.2, -9.79, 1.0, 0.0,
-    3.4, 0.9, -9.79, 1.0, 1.0,
+    3.4,  3.2, -9.79, 1.0, 0.0,
+    3.4,  0.9, -9.79, 1.0, 1.0,
     -3.4, 3.2, -9.79, 0.0, 0.0,
-    3.4, 0.9, -9.79, 1.0, 1.0,
+    3.4,  0.9, -9.79, 1.0, 1.0,
     -3.4, 0.9, -9.79, 0.0, 1.0,
 };
+
+// Theater room: walls + ceiling
+// Back wall (behind TV): Z = -10.5, X: -15..+15, Y: 0..6
+// Left wall: X = -15, Z: -10.5..+15, Y: 0..6
+// Right wall: X = +15, Z: -10.5..+15, Y: 0..6
+// Ceiling: Y = 6, X: -15..+15, Z: -10.5..+15
+const wall_vertices = [_]f32{
+    // Back wall (facing +Z)
+    -15.0, 6.0, -10.5, 15.0,  6.0, -10.5, 15.0,  0.0, -10.5,
+    -15.0, 6.0, -10.5, 15.0,  0.0, -10.5, -15.0, 0.0, -10.5,
+    // Left wall (facing +X)
+    -15.0, 6.0, -10.5, -15.0, 6.0, 15.0,  -15.0, 0.0, 15.0,
+    -15.0, 6.0, -10.5, -15.0, 0.0, 15.0,  -15.0, 0.0, -10.5,
+    // Right wall (facing -X)
+    15.0,  6.0, 15.0,  15.0,  6.0, -10.5, 15.0,  0.0, -10.5,
+    15.0,  6.0, 15.0,  15.0,  0.0, -10.5, 15.0,  0.0, 15.0,
+    // Ceiling (facing -Y)
+    -15.0, 6.0, -10.5, 15.0,  6.0, -10.5, 15.0,  6.0, 15.0,
+    -15.0, 6.0, -10.5, 15.0,  6.0, 15.0,  -15.0, 6.0, 15.0,
+};
+
+// Curtains: two panels flanking the TV screen
+// Left curtain: X: -6.5..-4.5, Y: 0..5, Z = -10.2
+// Right curtain: X: +4.5..+6.5, Y: 0..5, Z = -10.2
+const curtain_vertices = [_]f32{
+    // Left curtain
+    -6.5, 5.0, -10.2, -4.5, 5.0, -10.2, -4.5, 0.0, -10.2,
+    -6.5, 5.0, -10.2, -4.5, 0.0, -10.2, -6.5, 0.0, -10.2,
+    // Right curtain
+    4.5,  5.0, -10.2, 6.5,  5.0, -10.2, 6.5,  0.0, -10.2,
+    4.5,  5.0, -10.2, 6.5,  0.0, -10.2, 4.5,  0.0, -10.2,
+};
+
+// Theater seats: 3 rows x 8 seats each
+// Each seat is built from 4 cuboids:
+//   - Left leg:  thin post
+//   - Right leg: thin post
+//   - Seat pan:  wide, flat cushion
+//   - Backrest:  tall, thin panel behind the cushion
+// 4 cuboids * 108 floats = 432 floats per seat
+const floats_per_seat = 108 * 4;
+
+fn theaterSeat(comptime cx: f32, comptime row_z: f32) [floats_per_seat]f32 {
+    const w: f32 = 0.7; // total seat width
+    const leg_w: f32 = 0.06; // leg thickness (x)
+    const leg_d: f32 = 0.06; // leg thickness (z)
+    const leg_h: f32 = 0.42; // leg height
+    const seat_h: f32 = 0.08; // cushion thickness
+    const seat_d: f32 = 0.48; // cushion depth (z)
+    const back_h: f32 = 0.55; // backrest height above cushion
+    const back_d: f32 = 0.06; // backrest thickness (z)
+
+    const seat_top = leg_h + seat_h;
+
+    // Left leg (at back of seat, high Z side)
+    const left_leg = cuboidVertices(
+        cx,
+        cx + leg_w,
+        0.0,
+        leg_h,
+        row_z + seat_d - leg_d,
+        row_z + seat_d,
+    );
+    // Right leg (at back of seat, high Z side)
+    const right_leg = cuboidVertices(
+        cx + w - leg_w,
+        cx + w,
+        0.0,
+        leg_h,
+        row_z + seat_d - leg_d,
+        row_z + seat_d,
+    );
+    // Seat cushion (sits on top of legs, extends forward toward screen)
+    const cushion = cuboidVertices(
+        cx,
+        cx + w,
+        leg_h,
+        seat_top,
+        row_z,
+        row_z + seat_d,
+    );
+    // Backrest (at back edge, high Z side, rises above cushion)
+    const backrest = cuboidVertices(
+        cx,
+        cx + w,
+        seat_top,
+        seat_top + back_h,
+        row_z + seat_d - back_d,
+        row_z + seat_d,
+    );
+
+    return left_leg ++ right_leg ++ cushion ++ backrest;
+}
+
+fn seatRowVertices(comptime row_z: f32) [floats_per_seat * 8]f32 {
+    var verts: [floats_per_seat * 8]f32 = undefined;
+    const seat_w: f32 = 0.7;
+    const gap: f32 = 0.15;
+    const total_w = seat_w + gap;
+    const start_x: f32 = -3.5 * total_w + total_w * 0.5 - seat_w * 0.5;
+    for (0..8) |i| {
+        const fi: f32 = @floatFromInt(i);
+        const cx = start_x + fi * total_w;
+        const seat = theaterSeat(cx, row_z);
+        @memcpy(verts[i * floats_per_seat .. (i + 1) * floats_per_seat], &seat);
+    }
+    return verts;
+}
+
+const seat_row_0 = seatRowVertices(2.0);
+const seat_row_1 = seatRowVertices(4.5);
+const seat_row_2 = seatRowVertices(7.0);
+const seat_vertices = seat_row_0 ++ seat_row_1 ++ seat_row_2;
+
+// Movie posters on the left wall (X = -14.95, facing +X)
+// Each poster: 2.2 wide (Z) x 3.2 tall (Y), bottom at Y=1.2
+// 3 posters spaced along Z: center at Z=-4, Z=2, Z=8
+// Vertex format: x, y, z, u, v (5 floats per vertex, 6 verts per quad)
+fn posterQuad(comptime z_center: f32) [30]f32 {
+    const x: f32 = -14.95;
+    const hw: f32 = 1.1; // half-width
+    const hh: f32 = 1.6; // half-height
+    const cy: f32 = 2.8; // center Y
+    const z0 = z_center - hw;
+    const z1 = z_center + hw;
+    const y0 = cy - hh;
+    const y1 = cy + hh;
+    return .{
+        // tri 1
+        x, y1, z0, 1.0, 0.0,
+        x, y1, z1, 0.0, 0.0,
+        x, y0, z1, 0.0, 1.0,
+        // tri 2
+        x, y1, z0, 1.0, 0.0,
+        x, y0, z1, 0.0, 1.0,
+        x, y0, z0, 1.0, 1.0,
+    };
+}
+
+const poster_0_vertices = posterQuad(-4.0);
+const poster_1_vertices = posterQuad(2.0);
+const poster_2_vertices = posterQuad(8.0);
+
+// Movie posters on the right wall (X = +14.95, facing -X)
+fn rightPosterQuad(comptime z_center: f32) [30]f32 {
+    const x: f32 = 14.95;
+    const hw: f32 = 1.1;
+    const hh: f32 = 1.6;
+    const cy: f32 = 2.8;
+    const z0 = z_center - hw;
+    const z1 = z_center + hw;
+    const y0 = cy - hh;
+    const y1 = cy + hh;
+    // Facing -X: winding order reversed from left wall, UVs correct for viewing
+    return .{
+        // tri 1
+        x, y1, z1, 1.0, 0.0,
+        x, y1, z0, 0.0, 0.0,
+        x, y0, z0, 0.0, 1.0,
+        // tri 2
+        x, y1, z1, 1.0, 0.0,
+        x, y0, z0, 0.0, 1.0,
+        x, y0, z1, 1.0, 1.0,
+    };
+}
+
+const rposter_0_vertices = rightPosterQuad(-4.0);
+const rposter_1_vertices = rightPosterQuad(2.0);
+const rposter_2_vertices = rightPosterQuad(8.0);
 
 const scene_wgsl =
     \\struct Camera {
@@ -107,9 +279,9 @@ const tv_frame_wgsl =
     \\@fragment
     \\fn fs_main(input: VSOut) -> @location(0) vec4<f32> {
     \\  let edge = smoothstep(2.8, 3.95, abs(input.world_pos.x));
-    \\  let scan = 0.02 * sin(input.world_pos.y * 40.0);
-    \\  let base = vec3<f32>(0.05, 0.06, 0.07);
-    \\  let glow = vec3<f32>(0.1, 0.13, 0.18) * edge;
+    \\  let scan = 0.01 * sin(input.world_pos.y * 40.0);
+    \\  let base = vec3<f32>(0.02, 0.02, 0.025);
+    \\  let glow = vec3<f32>(0.04, 0.05, 0.07) * edge;
     \\  return vec4<f32>(base + glow + vec3<f32>(scan), 1.0);
     \\}
 ;
@@ -145,10 +317,10 @@ const boombox_wgsl =
     \\  let n = normalize(cross(dx, dy));
     \\  let light = normalize(vec3<f32>(0.45, 0.9, 0.35));
     \\  let diffuse = max(dot(n, light), 0.0);
-    \\  let ambient = 0.35;
-    \\  let shade = ambient + diffuse * 0.75;
-    \\  let base = vec3<f32>(0.22, 0.22, 0.25);
-    \\  let accent = vec3<f32>(0.44, 0.4, 0.3) * smoothstep(0.0, 1.8, input.world_pos.y);
+    \\  let ambient = 0.1;
+    \\  let shade = ambient + diffuse * 0.3;
+    \\  let base = vec3<f32>(0.1, 0.1, 0.12);
+    \\  let accent = vec3<f32>(0.18, 0.16, 0.12) * smoothstep(0.0, 1.8, input.world_pos.y);
     \\  return vec4<f32>((base + accent) * shade, 1.0);
     \\}
 ;
@@ -217,6 +389,185 @@ const video_wgsl =
     \\@fragment
     \\fn fs_main(input: VSOut) -> @location(0) vec4<f32> {
     \\  return textureSampleBaseClampToEdge(video_tex, video_sampler, input.uv);
+    \\}
+;
+
+const wall_wgsl =
+    \\struct Camera {
+    \\  view_proj: mat4x4<f32>,
+    \\};
+    \\struct RoomLight {
+    \\  brightness: f32,
+    \\};
+    \\
+    \\@group(0) @binding(0) var<uniform> camera: Camera;
+    \\@group(0) @binding(1) var<uniform> room_light: RoomLight;
+    \\
+    \\struct VSIn {
+    \\  @location(0) position: vec3<f32>,
+    \\};
+    \\
+    \\struct VSOut {
+    \\  @builtin(position) clip_pos: vec4<f32>,
+    \\  @location(0) world_pos: vec3<f32>,
+    \\};
+    \\
+    \\@vertex
+    \\fn vs_main(input: VSIn) -> VSOut {
+    \\  var out: VSOut;
+    \\  out.world_pos = input.position;
+    \\  out.clip_pos = camera.view_proj * vec4<f32>(input.position, 1.0);
+    \\  return out;
+    \\}
+    \\
+    \\@fragment
+    \\fn fs_main(input: VSOut) -> @location(0) vec4<f32> {
+    \\  let dx = dpdx(input.world_pos);
+    \\  let dy = dpdy(input.world_pos);
+    \\  let n = normalize(cross(dx, dy));
+    \\  let light = normalize(vec3<f32>(0.0, 0.8, 0.3));
+    \\  let diffuse = max(dot(n, light), 0.0);
+    \\  let b = room_light.brightness;
+    \\  let shade = mix(0.04, 0.8, b) + diffuse * mix(0.1, 0.9, b);
+    \\  let base = vec3<f32>(0.06, 0.055, 0.05);
+    \\  var color = base * shade + base * b * 0.4;
+    \\  let screen_center = vec3<f32>(0.0, 2.0, -9.8);
+    \\  let to_screen = input.world_pos - screen_center;
+    \\  let sd = length(to_screen);
+    \\  let glow = clamp(1.0 / (1.0 + sd * sd * 0.04), 0.0, 1.0);
+    \\  color = color + vec3<f32>(0.08, 0.1, 0.14) * glow * 0.25 * (1.0 - b * 0.8);
+    \\  return vec4<f32>(color, 1.0);
+    \\}
+;
+
+const curtain_wgsl =
+    \\struct Camera {
+    \\  view_proj: mat4x4<f32>,
+    \\};
+    \\struct RoomLight {
+    \\  brightness: f32,
+    \\};
+    \\
+    \\@group(0) @binding(0) var<uniform> camera: Camera;
+    \\@group(0) @binding(1) var<uniform> room_light: RoomLight;
+    \\
+    \\struct VSIn {
+    \\  @location(0) position: vec3<f32>,
+    \\};
+    \\
+    \\struct VSOut {
+    \\  @builtin(position) clip_pos: vec4<f32>,
+    \\  @location(0) world_pos: vec3<f32>,
+    \\};
+    \\
+    \\@vertex
+    \\fn vs_main(input: VSIn) -> VSOut {
+    \\  var out: VSOut;
+    \\  out.world_pos = input.position;
+    \\  out.clip_pos = camera.view_proj * vec4<f32>(input.position, 1.0);
+    \\  return out;
+    \\}
+    \\
+    \\@fragment
+    \\fn fs_main(input: VSOut) -> @location(0) vec4<f32> {
+    \\  let b = room_light.brightness;
+    \\  let fold = 0.5 + 0.5 * sin(input.world_pos.x * 8.0);
+    \\  let drape = smoothstep(0.0, 4.5, input.world_pos.y);
+    \\  let shade = mix(0.15, 1.0, b) + fold * mix(0.12, 0.4, b) + drape * 0.08;
+    \\  let velvet = vec3<f32>(0.55, 0.05, 0.07);
+    \\  return vec4<f32>(velvet * shade, 1.0);
+    \\}
+;
+
+const seat_wgsl =
+    \\struct Camera {
+    \\  view_proj: mat4x4<f32>,
+    \\};
+    \\struct RoomLight {
+    \\  brightness: f32,
+    \\};
+    \\
+    \\@group(0) @binding(0) var<uniform> camera: Camera;
+    \\@group(0) @binding(1) var<uniform> room_light: RoomLight;
+    \\
+    \\struct VSIn {
+    \\  @location(0) position: vec3<f32>,
+    \\};
+    \\
+    \\struct VSOut {
+    \\  @builtin(position) clip_pos: vec4<f32>,
+    \\  @location(0) world_pos: vec3<f32>,
+    \\};
+    \\
+    \\@vertex
+    \\fn vs_main(input: VSIn) -> VSOut {
+    \\  var out: VSOut;
+    \\  out.world_pos = input.position;
+    \\  out.clip_pos = camera.view_proj * vec4<f32>(input.position, 1.0);
+    \\  return out;
+    \\}
+    \\
+    \\@fragment
+    \\fn fs_main(input: VSOut) -> @location(0) vec4<f32> {
+    \\  let b = room_light.brightness;
+    \\  let dx = dpdx(input.world_pos);
+    \\  let dy = dpdy(input.world_pos);
+    \\  let n = normalize(cross(dx, dy));
+    \\  let light = normalize(vec3<f32>(0.0, 0.9, -0.3));
+    \\  let diffuse = max(dot(n, light), 0.0);
+    \\  let shade = mix(0.08, 0.85, b) + diffuse * mix(0.15, 0.8, b);
+    \\  let y = input.world_pos.y;
+    \\  let leg_metal = vec3<f32>(0.06, 0.06, 0.07);
+    \\  let cushion = vec3<f32>(0.5, 0.06, 0.08);
+    \\  let backrest = vec3<f32>(0.45, 0.04, 0.06);
+    \\  let is_cushion = smoothstep(0.38, 0.44, y) * (1.0 - smoothstep(0.48, 0.52, y));
+    \\  let is_back = smoothstep(0.48, 0.54, y);
+    \\  var color = leg_metal;
+    \\  color = mix(color, cushion, is_cushion);
+    \\  color = mix(color, backrest, is_back);
+    \\  return vec4<f32>(color * shade, 1.0);
+    \\}
+;
+
+const poster_wgsl =
+    \\struct Camera {
+    \\  view_proj: mat4x4<f32>,
+    \\};
+    \\struct RoomLight {
+    \\  brightness: f32,
+    \\};
+    \\
+    \\@group(0) @binding(0) var<uniform> camera: Camera;
+    \\@group(0) @binding(1) var<uniform> room_light: RoomLight;
+    \\@group(1) @binding(0) var poster_sampler: sampler;
+    \\@group(1) @binding(1) var poster_tex: texture_2d<f32>;
+    \\
+    \\struct VSIn {
+    \\  @location(0) position: vec3<f32>,
+    \\  @location(1) uv: vec2<f32>,
+    \\};
+    \\
+    \\struct VSOut {
+    \\  @builtin(position) clip_pos: vec4<f32>,
+    \\  @location(0) uv: vec2<f32>,
+    \\  @location(1) world_pos: vec3<f32>,
+    \\};
+    \\
+    \\@vertex
+    \\fn vs_main(input: VSIn) -> VSOut {
+    \\  var out: VSOut;
+    \\  out.clip_pos = camera.view_proj * vec4<f32>(input.position, 1.0);
+    \\  out.uv = input.uv;
+    \\  out.world_pos = input.position;
+    \\  return out;
+    \\}
+    \\
+    \\@fragment
+    \\fn fs_main(input: VSOut) -> @location(0) vec4<f32> {
+    \\  let b = room_light.brightness;
+    \\  let tex = textureSample(poster_tex, poster_sampler, input.uv);
+    \\  let shade = mix(0.12, 0.9, b);
+    \\  return vec4<f32>(tex.rgb * shade, tex.a);
     \\}
 ;
 
@@ -317,6 +668,111 @@ export fn arch_text_shader_wgsl() u64 {
         setLastError("arch_text_shader_wgsl: out of memory");
         return 0;
     };
+}
+
+export fn wall_shader_wgsl() u64 {
+    clearLastError();
+    return allocShaderSource(wall_wgsl) catch {
+        setLastError("wall_shader_wgsl: out of memory");
+        return 0;
+    };
+}
+
+export fn curtain_shader_wgsl() u64 {
+    clearLastError();
+    return allocShaderSource(curtain_wgsl) catch {
+        setLastError("curtain_shader_wgsl: out of memory");
+        return 0;
+    };
+}
+
+export fn seat_shader_wgsl() u64 {
+    clearLastError();
+    return allocShaderSource(seat_wgsl) catch {
+        setLastError("seat_shader_wgsl: out of memory");
+        return 0;
+    };
+}
+
+// Wall geometry exports
+export fn wall_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&wall_vertices[0]));
+}
+export fn wall_vertex_len() u32 {
+    return wall_vertices.len;
+}
+export fn wall_vertex_count() u32 {
+    return wall_vertices.len / 3;
+}
+
+// Curtain geometry exports
+export fn curtain_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&curtain_vertices[0]));
+}
+export fn curtain_vertex_len() u32 {
+    return curtain_vertices.len;
+}
+export fn curtain_vertex_count() u32 {
+    return curtain_vertices.len / 3;
+}
+
+// Seat geometry exports
+export fn seat_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&seat_vertices[0]));
+}
+export fn seat_vertex_len() u32 {
+    return seat_vertices.len;
+}
+export fn seat_vertex_count() u32 {
+    return seat_vertices.len / 3;
+}
+
+export fn poster_shader_wgsl() u64 {
+    clearLastError();
+    return allocShaderSource(poster_wgsl) catch {
+        setLastError("poster_shader_wgsl: out of memory");
+        return 0;
+    };
+}
+
+// Poster geometry exports (each poster: 6 verts * 5 floats = 30 floats)
+export fn poster_0_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&poster_0_vertices[0]));
+}
+export fn poster_0_vertex_len() u32 {
+    return poster_0_vertices.len;
+}
+export fn poster_1_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&poster_1_vertices[0]));
+}
+export fn poster_1_vertex_len() u32 {
+    return poster_1_vertices.len;
+}
+export fn poster_2_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&poster_2_vertices[0]));
+}
+export fn poster_2_vertex_len() u32 {
+    return poster_2_vertices.len;
+}
+
+// Right wall poster geometry exports
+export fn rposter_0_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&rposter_0_vertices[0]));
+}
+export fn rposter_0_vertex_len() u32 {
+    return rposter_0_vertices.len;
+}
+export fn rposter_1_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&rposter_1_vertices[0]));
+}
+export fn rposter_1_vertex_len() u32 {
+    return rposter_1_vertices.len;
+}
+export fn rposter_2_vertex_ptr() u32 {
+    return @intCast(@intFromPtr(&rposter_2_vertices[0]));
+}
+export fn rposter_2_vertex_len() u32 {
+    return rposter_2_vertices.len;
 }
 
 export fn last_error_ptr() u32 {
@@ -577,9 +1033,9 @@ fn lookAtRH(eye: Vec3, center: Vec3, up_hint: Vec3) [16]f32 {
     const u = cross(s, f);
 
     return .{
-        s.x, u.x, -f.x, 0.0,
-        s.y, u.y, -f.y, 0.0,
-        s.z, u.z, -f.z, 0.0,
+        s.x,          u.x,          -f.x,        0.0,
+        s.y,          u.y,          -f.y,        0.0,
+        s.z,          u.z,          -f.z,        0.0,
         -dot(s, eye), -dot(u, eye), dot(f, eye), 1.0,
     };
 }
