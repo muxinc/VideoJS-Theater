@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>TypeScript WebGPU World</title>
+    </head>
+    <body>
+        <main class="layout">
+            <canvas id="scene" aria-label="WebGPU scene"></canvas>
+            <div id="crosshair" aria-hidden="true">
+                <span></span>
+                <span></span>
+            </div>
+            <section class="panel">
+                <h1>VJS 10 Theater</h1>
+                <p id="status">Booting...</p>
+                <p class="hint">Click the canvas to lock the cursor.</p>
+                <ul>
+                    <li><strong>Move:</strong> W A S D</li>
+                    <li><strong>Rise / Fall:</strong> E / Q</li>
+                    <li><strong>Sprint:</strong> Shift</li>
+                    <li><strong>Look:</strong> Mouse</li>
+                    <li><strong>Pickup Tape:</strong> Aim + F</li>
+                </ul>
+                <div class="video-actions">
+                    <button id="cursor-lock" type="button">Lock Cursor</button>
+                    <button id="video-play" type="button">Play Video</button>
+                    <button id="video-pause" type="button">Pause Video</button>
+                    <button id="lights-toggle" type="button">Lights On</button>
+                </div>
+                <div
+                    class="video-hidden"
+                    id="videojs-player-root"
+                    aria-hidden="true"
+                ></div>
+            </section>
+        </main>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>

@@ -5,9 +5,12 @@
   "scripts": {
     "wasm:sync": "zig build wasm && node scripts/sync-wasm.mjs",
     "dev": "npm run wasm:sync && vite --config web/vite.config.js",
+    "dev:ts": "vite --config web-ts/vite.config.js",
     "build": "npm run wasm:sync && vite build --config web/vite.config.js",
+    "build:ts": "vite build --config web-ts/vite.config.js",
     "build:vercel": "vite build --config web/vite.config.js",
-    "preview": "vite preview --config web/vite.config.js"
+    "preview": "vite preview --config web/vite.config.js",
+    "preview:ts": "vite preview --config web-ts/vite.config.js"
   },
   "dependencies": {
     "@videojs/react": "next",
