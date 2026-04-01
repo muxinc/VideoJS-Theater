@@ -6,9 +6,12 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
   ARCH_TEXT_SHADER_CODE,
-  CURTAIN_SHADER_CODE,
-  CURTAIN_VERTICES,
+  CABINET_SHADER_CODE,
+  CABINET_VERTICES,
   FLOOR_VERTICES,
+  LABEL_SHADER_CODE,
+  LAMP_SHADER_CODE,
+  LAMP_VERTICES,
   MESH_SHADER_CODE,
   POSTER_0_VERTICES,
   POSTER_1_VERTICES,
@@ -17,8 +20,11 @@ import {
   RPOSTER_0_VERTICES,
   RPOSTER_1_VERTICES,
   RPOSTER_2_VERTICES,
+  RUG_VERTICES,
+  SCREEN_OFF_SHADER_CODE,
   SEAT_SHADER_CODE,
   SEAT_VERTICES,
+  TAPE_SHADER_CODE,
   TV_FRAME_SHADER_CODE,
   TV_FRAME_VERTICES,
   VIDEO_SHADER_CODE,
@@ -61,58 +67,102 @@ const TAPE_DROP_DISTANCE = 1.5;
 
 const VCR_INSERT_RADIUS = 2.5;
 const VCR_INSERT_DOT_THRESHOLD = 0.9;
-const VCR_POSITION = new THREE.Vector3(0.0, 0.0, -6.75);
+const VCR_POSITION = new THREE.Vector3(0.0, 3.8, -9.18);
 
-const TAPE_VIDEO_DATA = {
-  playbackId: "9iUYcsVCtyyWdPfHFsJNreL3j01K2V1xizq4ZcYHwXQs",
-  get src() {
-    return `https://stream.mux.com/${this.playbackId}.m3u8`;
-  },
-  get poster() {
-    return `https://image.mux.com/${this.playbackId}/storyboard.png`;
-  },
-  title: "Demo Reel",
-};
+const DEFAULT_TAPE_PLAYBACK_ID = "9iUYcsVCtyyWdPfHFsJNreL3j01K2V1xizq4ZcYHwXQs";
 
 const TAPE_MODEL_CONFIG = {
   url: "/tape.glb",
   targetMaxDim: 2.2,
   rotation: new THREE.Euler(0.0, 0.18 * Math.PI, 0.0),
-  position: new THREE.Vector3(-5.0, 0.0, -9.25),
   floorOffset: 0.03,
 };
+
+const TAPE_DEFINITIONS = [
+  {
+    id: "twister",
+    title: "Twister",
+    playbackId: DEFAULT_TAPE_PLAYBACK_ID,
+    labelBg: "#dbc193",
+    labelStripe: "#c4622e",
+    labelInk: "#24140c",
+    position: new THREE.Vector3(-8.2, 0.42, -8.98),
+    rotation: new THREE.Euler(0.0, Math.PI * 0.5, 0.0),
+  },
+  {
+    id: "batman",
+    title: "Batman",
+    playbackId: DEFAULT_TAPE_PLAYBACK_ID,
+    labelBg: "#d7c978",
+    labelStripe: "#1c1d22",
+    labelInk: "#16120f",
+    position: new THREE.Vector3(-7.2, 0.42, -8.98),
+    rotation: new THREE.Euler(0.0, Math.PI * 0.5, 0.0),
+  },
+  {
+    id: "terminator2",
+    title: "Terminator 2",
+    playbackId: DEFAULT_TAPE_PLAYBACK_ID,
+    labelBg: "#cad0d7",
+    labelStripe: "#5f6f84",
+    labelInk: "#17181b",
+    position: new THREE.Vector3(-5.4, 0.42, -8.98),
+    rotation: new THREE.Euler(0.0, Math.PI * 0.5, 0.0),
+  },
+  {
+    id: "home-video",
+    title: "Home Video '94",
+    playbackId: DEFAULT_TAPE_PLAYBACK_ID,
+    labelBg: "#eee2c9",
+    labelStripe: "#7a8c70",
+    labelInk: "#2a231d",
+    position: new THREE.Vector3(-8.2, 1.32, -8.98),
+    rotation: new THREE.Euler(0.0, Math.PI * 0.5, 0.0),
+  },
+  {
+    id: "alien",
+    title: "Alien",
+    playbackId: DEFAULT_TAPE_PLAYBACK_ID,
+    labelBg: "#bcc6ab",
+    labelStripe: "#334233",
+    labelInk: "#171b15",
+    position: new THREE.Vector3(-6.4, 1.32, -8.98),
+    rotation: new THREE.Euler(0.0, Math.PI * 0.5, 0.0),
+  },
+  {
+    id: "mix-tape",
+    title: "Friday Mix",
+    playbackId: DEFAULT_TAPE_PLAYBACK_ID,
+    labelBg: "#efcfb7",
+    labelStripe: "#c55f6b",
+    labelInk: "#2c1b1d",
+    position: new THREE.Vector3(-5.0, 1.32, -8.98),
+    rotation: new THREE.Euler(0.0, Math.PI * 0.5, 0.0),
+  },
+];
+
+function getTapeSrc(playbackId) {
+  return `https://stream.mux.com/${playbackId}.m3u8`;
+}
+
+function getTapePoster(playbackId) {
+  return `https://image.mux.com/${playbackId}/storyboard.png`;
+}
 
 const PLAYER_MODEL_CONFIG = {
   url: "/player.glb",
   targetMaxDim: 1.7,
   rotation: new THREE.Euler(0.0, 0.0, 0.0),
-  position: new THREE.Vector3(0.0, 0.0, -6.75),
-  floorOffset: 0.03,
+  position: new THREE.Vector3(0.0, 3.55, -9.18),
+  floorOffset: 0.0,
 };
 
 const VIDEO_SCREEN_RECT = Object.freeze({
-  left: -3.4,
-  right: 3.4,
-  top: 3.2,
-  bottom: 0.9,
-  z: -9.79,
-});
-
-const PROJECTOR_CONFIG = Object.freeze({
-  bodyMin: new THREE.Vector3(-0.92, 5.24, 10.95),
-  bodyMax: new THREE.Vector3(0.92, 5.7, 11.78),
-  neckMin: new THREE.Vector3(-0.14, 5.7, 11.14),
-  neckMax: new THREE.Vector3(0.14, 5.92, 11.46),
-  mountMin: new THREE.Vector3(-0.56, 5.92, 11.0),
-  mountMax: new THREE.Vector3(0.56, 6.0, 11.6),
-  lensMin: new THREE.Vector3(-0.24, 5.34, 10.58),
-  lensMax: new THREE.Vector3(0.24, 5.58, 10.95),
-  lensCenter: new THREE.Vector3(0.0, 5.46, 10.58),
-  apertureHalfWidth: 0.16,
-  apertureHalfHeight: 0.1,
-  targetInsetX: 0.32,
-  targetInsetY: 0.18,
-  beamTargetZ: VIDEO_SCREEN_RECT.z + 0.03,
+  left: -1.7,
+  right: 1.7,
+  top: 3.0,
+  bottom: 0.75,
+  z: -8.61,
 });
 
 if (!navigator.gpu) {
@@ -286,11 +336,11 @@ function createWoodFloorTextures(device, size = 512) {
       heightData[py * size + px] = h;
       const idx = py * size + px;
       const idx4 = idx * 4;
-      const seafoamShift = macroNoise * 18 + tuftNoise * 14 + nap * 10;
+      const taupeShift = macroNoise * 18 + tuftNoise * 14 + nap * 10;
       const coolShift = fiberNoise * 10 + fleck * 6;
-      const r = 126 + seafoamShift * 0.55 - coolShift * 0.15;
-      const g = 205 + seafoamShift * 0.9 + coolShift * 0.25;
-      const b = 183 + seafoamShift * 0.7 + coolShift * 0.45;
+      const r = 163 + taupeShift * 0.48 + coolShift * 0.06;
+      const g = 142 + taupeShift * 0.34 - coolShift * 0.02;
+      const b = 124 + taupeShift * 0.26 - coolShift * 0.1;
 
       albedoData[idx4 + 0] = Math.max(0, Math.min(255, Math.round(r)));
       albedoData[idx4 + 1] = Math.max(0, Math.min(255, Math.round(g)));
@@ -516,175 +566,6 @@ function appendCuboidVertices(vertices, min, max) {
   );
 }
 
-function createProjectorVertices() {
-  const vertices = [];
-  appendCuboidVertices(
-    vertices,
-    PROJECTOR_CONFIG.mountMin,
-    PROJECTOR_CONFIG.mountMax,
-  );
-  appendCuboidVertices(
-    vertices,
-    PROJECTOR_CONFIG.neckMin,
-    PROJECTOR_CONFIG.neckMax,
-  );
-  appendCuboidVertices(
-    vertices,
-    PROJECTOR_CONFIG.bodyMin,
-    PROJECTOR_CONFIG.bodyMax,
-  );
-  appendCuboidVertices(
-    vertices,
-    PROJECTOR_CONFIG.lensMin,
-    PROJECTOR_CONFIG.lensMax,
-  );
-  return new Float32Array(vertices);
-}
-
-function appendBeamQuad(vertices, a, b, c, d) {
-  vertices.push(
-    a.x,
-    a.y,
-    a.z,
-    0.0,
-    0.0,
-    b.x,
-    b.y,
-    b.z,
-    1.0,
-    0.0,
-    c.x,
-    c.y,
-    c.z,
-    1.0,
-    1.0,
-    a.x,
-    a.y,
-    a.z,
-    0.0,
-    0.0,
-    c.x,
-    c.y,
-    c.z,
-    1.0,
-    1.0,
-    d.x,
-    d.y,
-    d.z,
-    0.0,
-    1.0,
-  );
-}
-
-function createProjectorBeamVertices() {
-  const source = PROJECTOR_CONFIG.lensCenter;
-  const sourceCorners = [
-    new THREE.Vector3(
-      source.x - PROJECTOR_CONFIG.apertureHalfWidth,
-      source.y + PROJECTOR_CONFIG.apertureHalfHeight,
-      source.z,
-    ),
-    new THREE.Vector3(
-      source.x + PROJECTOR_CONFIG.apertureHalfWidth,
-      source.y + PROJECTOR_CONFIG.apertureHalfHeight,
-      source.z,
-    ),
-    new THREE.Vector3(
-      source.x + PROJECTOR_CONFIG.apertureHalfWidth,
-      source.y - PROJECTOR_CONFIG.apertureHalfHeight,
-      source.z,
-    ),
-    new THREE.Vector3(
-      source.x - PROJECTOR_CONFIG.apertureHalfWidth,
-      source.y - PROJECTOR_CONFIG.apertureHalfHeight,
-      source.z,
-    ),
-  ];
-  const targetCorners = [
-    new THREE.Vector3(
-      VIDEO_SCREEN_RECT.left + PROJECTOR_CONFIG.targetInsetX,
-      VIDEO_SCREEN_RECT.top - PROJECTOR_CONFIG.targetInsetY,
-      PROJECTOR_CONFIG.beamTargetZ,
-    ),
-    new THREE.Vector3(
-      VIDEO_SCREEN_RECT.right - PROJECTOR_CONFIG.targetInsetX,
-      VIDEO_SCREEN_RECT.top - PROJECTOR_CONFIG.targetInsetY,
-      PROJECTOR_CONFIG.beamTargetZ,
-    ),
-    new THREE.Vector3(
-      VIDEO_SCREEN_RECT.right - PROJECTOR_CONFIG.targetInsetX,
-      VIDEO_SCREEN_RECT.bottom + PROJECTOR_CONFIG.targetInsetY,
-      PROJECTOR_CONFIG.beamTargetZ,
-    ),
-    new THREE.Vector3(
-      VIDEO_SCREEN_RECT.left + PROJECTOR_CONFIG.targetInsetX,
-      VIDEO_SCREEN_RECT.bottom + PROJECTOR_CONFIG.targetInsetY,
-      PROJECTOR_CONFIG.beamTargetZ,
-    ),
-  ];
-
-  const vertices = [];
-  for (let i = 0; i < 4; i += 1) {
-    const next = (i + 1) % 4;
-    appendBeamQuad(
-      vertices,
-      sourceCorners[i],
-      sourceCorners[next],
-      targetCorners[next],
-      targetCorners[i],
-    );
-  }
-
-  return new Float32Array(vertices);
-}
-
-function getProjectorBeamShaderCode() {
-  return /* wgsl */ `
-struct Camera {
-  view_proj: mat4x4<f32>,
-};
-
-struct ProjectorLight {
-  intensity: f32,
-  _pad0: vec3<f32>,
-};
-
-@group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var<uniform> projector_light: ProjectorLight;
-
-struct VsIn {
-  @location(0) position: vec3<f32>,
-  @location(1) uv: vec2<f32>,
-};
-
-struct VsOut {
-  @builtin(position) clip_position: vec4<f32>,
-  @location(0) uv: vec2<f32>,
-  @location(1) world_pos: vec3<f32>,
-};
-
-@vertex
-fn vs_main(in: VsIn) -> VsOut {
-  var out: VsOut;
-  out.uv = in.uv;
-  out.world_pos = in.position;
-  out.clip_position = camera.view_proj * vec4<f32>(in.position, 1.0);
-  return out;
-}
-
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-  let edge_fade = smoothstep(0.0, 0.18, in.uv.x) * (1.0 - smoothstep(0.82, 1.0, in.uv.x));
-  let near_fade = smoothstep(0.02, 0.18, in.uv.y);
-  let far_fade = 1.0 - smoothstep(0.7, 1.0, in.uv.y);
-  let shimmer = 0.88 + 0.12 * sin(in.world_pos.z * 0.55 + in.world_pos.y * 4.0);
-  let alpha = projector_light.intensity * edge_fade * near_fade * (0.45 + far_fade * 0.55) * shimmer * 0.18;
-  let color = vec3<f32>(0.72, 0.8, 1.0) * (0.35 + near_fade * 0.65);
-  return vec4<f32>(color, alpha);
-}
-`;
-}
-
 function status(message: string): void {
   baseStatusMessage = message;
   renderStatus();
@@ -783,6 +664,119 @@ function createArchTextTexture(device) {
     height,
   ]);
   return texture;
+}
+
+function createTapeLabelTexture(device, definition) {
+  const width = 448;
+  const height = 128;
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = width;
+  canvasEl.height = height;
+  const ctx = canvasEl.getContext("2d");
+  if (!ctx) {
+    throw new Error("Failed to create 2D canvas context for tape label");
+  }
+
+  ctx.fillStyle = definition.labelBg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.26)";
+  ctx.fillRect(0, 0, width, 12);
+
+  ctx.fillStyle = definition.labelStripe;
+  ctx.fillRect(18, 18, width - 36, 26);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.34)";
+  ctx.fillRect(26, 60, width - 52, 40);
+
+  ctx.strokeStyle = "rgba(79, 55, 31, 0.32)";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(8, 8, width - 16, height - 16);
+
+  ctx.fillStyle = definition.labelInk;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font =
+    definition.title.length > 12
+      ? "700 34px 'Arial Narrow', 'Trebuchet MS', sans-serif"
+      : "700 40px 'Arial Narrow', 'Trebuchet MS', sans-serif";
+  ctx.fillText(definition.title, width / 2, 82);
+
+  ctx.fillStyle = "rgba(34, 24, 16, 0.62)";
+  ctx.font = "700 16px 'Arial', sans-serif";
+  ctx.fillText("VHS", width - 42, 30);
+
+  ctx.strokeStyle = "rgba(60, 44, 28, 0.3)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(24, height - 24);
+  ctx.lineTo(width - 24, height - 24);
+  ctx.stroke();
+
+  const texture = device.createTexture({
+    size: [width, height, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  device.queue.copyExternalImageToTexture({ source: canvasEl }, { texture }, [
+    width,
+    height,
+    1,
+  ]);
+  return texture;
+}
+
+function appendTexturedQuad(vertices, a, b, c, d) {
+  vertices.push(...a, 0.0, 0.0, ...b, 1.0, 0.0, ...c, 1.0, 1.0);
+  vertices.push(...a, 0.0, 0.0, ...c, 1.0, 1.0, ...d, 0.0, 1.0);
+}
+
+function createTapeLabelLocalVertices(bounds) {
+  const vertices = [];
+  const insetX = (bounds.max.x - bounds.min.x) * 0.08;
+  const insetY = (bounds.max.y - bounds.min.y) * 0.1;
+  const frontPad = 0.06;
+  const sideInset = (bounds.max.z - bounds.min.z) * 0.08;
+  const x0 = bounds.min.x + insetX;
+  const x1 = bounds.max.x - insetX;
+  const y0 = bounds.min.y + insetY;
+  const y1 = bounds.max.y - insetY;
+  const zFront = bounds.max.z + frontPad;
+  const zBack = bounds.min.z - frontPad;
+  const z0 = bounds.min.z + sideInset;
+  const z1 = bounds.max.z - sideInset;
+  const xLeft = bounds.min.x - frontPad;
+  const xRight = bounds.max.x + frontPad;
+
+  appendTexturedQuad(
+    vertices,
+    [x0, y1, zFront],
+    [x1, y1, zFront],
+    [x1, y0, zFront],
+    [x0, y0, zFront],
+  );
+  appendTexturedQuad(
+    vertices,
+    [x1, y1, zBack],
+    [x0, y1, zBack],
+    [x0, y0, zBack],
+    [x1, y0, zBack],
+  );
+  appendTexturedQuad(
+    vertices,
+    [xLeft, y1, z0],
+    [xLeft, y1, z1],
+    [xLeft, y0, z1],
+    [xLeft, y0, z0],
+  );
+  appendTexturedQuad(
+    vertices,
+    [xRight, y1, z1],
+    [xRight, y1, z0],
+    [xRight, y0, z0],
+    [xRight, y0, z1],
+  );
+
+  return new Float32Array(vertices);
 }
 
 function getLoadedRoot(loaded) {
@@ -925,6 +919,33 @@ function transformModelVertices(
   return transformed;
 }
 
+function transformTexturedVertices(
+  localVertices,
+  position,
+  quaternion,
+  target,
+) {
+  const transformed = target ?? new Float32Array(localVertices.length);
+  const matrix = new THREE.Matrix4().compose(
+    position,
+    quaternion,
+    new THREE.Vector3(1.0, 1.0, 1.0),
+  );
+  const temp = new THREE.Vector3();
+
+  for (let i = 0; i < localVertices.length; i += 5) {
+    temp.set(localVertices[i], localVertices[i + 1], localVertices[i + 2]);
+    temp.applyMatrix4(matrix);
+    transformed[i] = temp.x;
+    transformed[i + 1] = temp.y;
+    transformed[i + 2] = temp.z;
+    transformed[i + 3] = localVertices[i + 3];
+    transformed[i + 4] = localVertices[i + 4];
+  }
+
+  return transformed;
+}
+
 function createWritableVertexBuffer(
   device: GPUDevice,
   values: Float32Array,
@@ -978,15 +999,18 @@ async function main() {
 
   const world = new WorldState();
   const floorShaderCode = getWoodFloorShaderCode();
+  const cabinetShaderCode = CABINET_SHADER_CODE;
   const frameShaderCode = TV_FRAME_SHADER_CODE;
   const boomboxShaderCode = MESH_SHADER_CODE;
   const archTextShaderCode = ARCH_TEXT_SHADER_CODE;
+  const labelShaderCode = LABEL_SHADER_CODE;
+  const lampShaderCode = LAMP_SHADER_CODE;
+  const screenOffShaderCode = SCREEN_OFF_SHADER_CODE;
+  const tapeShaderCode = TAPE_SHADER_CODE;
   const videoShaderCode = VIDEO_SHADER_CODE;
   const wallShaderCode = WALL_SHADER_CODE;
-  const curtainShaderCode = CURTAIN_SHADER_CODE;
   const seatShaderCode = SEAT_SHADER_CODE;
   const posterShaderCode = POSTER_SHADER_CODE;
-  const projectorBeamShaderCode = getProjectorBeamShaderCode();
 
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error("No WebGPU adapter available");
@@ -1076,6 +1100,37 @@ async function main() {
     },
   });
 
+  const screenOffPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: device.createShaderModule({ code: screenOffShaderCode }),
+      entryPoint: "vs_main",
+      buffers: [
+        {
+          arrayStride: 20,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: "float32x3" },
+            { shaderLocation: 1, offset: 12, format: "float32x2" },
+          ],
+        },
+      ],
+    },
+    fragment: {
+      module: device.createShaderModule({ code: screenOffShaderCode }),
+      entryPoint: "fs_main",
+      targets: [{ format }],
+    },
+    primitive: {
+      topology: "triangle-list",
+      cullMode: "none",
+    },
+    depthStencil: {
+      format: "depth24plus",
+      depthWriteEnabled: true,
+      depthCompare: "less",
+    },
+  });
+
   const framePipeline = device.createRenderPipeline({
     layout: "auto",
     vertex: {
@@ -1095,7 +1150,7 @@ async function main() {
     },
     primitive: {
       topology: "triangle-list",
-      cullMode: "back",
+      cullMode: "none",
     },
     depthStencil: {
       format: "depth24plus",
@@ -1208,55 +1263,10 @@ async function main() {
   }
 
   const wallPipeline = createSimplePipeline(wallShaderCode);
-  const curtainPipeline = createSimplePipeline(curtainShaderCode);
+  const cabinetPipeline = createSimplePipeline(cabinetShaderCode);
+  const lampPipeline = createSimplePipeline(lampShaderCode);
   const seatPipeline = createSimplePipeline(seatShaderCode);
-
-  const projectorBeamModule = device.createShaderModule({
-    code: projectorBeamShaderCode,
-  });
-  const projectorBeamPipeline = device.createRenderPipeline({
-    layout: "auto",
-    vertex: {
-      module: projectorBeamModule,
-      entryPoint: "vs_main",
-      buffers: [
-        {
-          arrayStride: 20,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: "float32x3" },
-            { shaderLocation: 1, offset: 12, format: "float32x2" },
-          ],
-        },
-      ],
-    },
-    fragment: {
-      module: projectorBeamModule,
-      entryPoint: "fs_main",
-      targets: [
-        {
-          format,
-          blend: {
-            color: {
-              srcFactor: "src-alpha",
-              dstFactor: "one",
-              operation: "add",
-            },
-            alpha: {
-              srcFactor: "one",
-              dstFactor: "one-minus-src-alpha",
-              operation: "add",
-            },
-          },
-        },
-      ],
-    },
-    primitive: { topology: "triangle-list", cullMode: "none" },
-    depthStencil: {
-      format: "depth24plus",
-      depthWriteEnabled: false,
-      depthCompare: "less",
-    },
-  });
+  const tapePipeline = createSimplePipeline(tapeShaderCode);
 
   const posterModule = device.createShaderModule({ code: posterShaderCode });
   const posterPipeline = device.createRenderPipeline({
@@ -1276,6 +1286,35 @@ async function main() {
     },
     fragment: {
       module: posterModule,
+      entryPoint: "fs_main",
+      targets: [{ format }],
+    },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: {
+      format: "depth24plus",
+      depthWriteEnabled: true,
+      depthCompare: "less",
+    },
+  });
+
+  const labelModule = device.createShaderModule({ code: labelShaderCode });
+  const labelPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: labelModule,
+      entryPoint: "vs_main",
+      buffers: [
+        {
+          arrayStride: 20,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: "float32x3" },
+            { shaderLocation: 1, offset: 12, format: "float32x2" },
+          ],
+        },
+      ],
+    },
+    fragment: {
+      module: labelModule,
       entryPoint: "fs_main",
       targets: [{ format }],
     },
@@ -1324,13 +1363,26 @@ async function main() {
   );
   const wallVertexCount = WALL_VERTICES.length / 3;
 
-  // Curtain vertices
-  const curtainVertexBuffer = uploadBuffer(
+  const cabinetVertexBuffer = uploadBuffer(
     device,
-    CURTAIN_VERTICES,
+    CABINET_VERTICES,
     GPUBufferUsage.VERTEX,
   );
-  const curtainVertexCount = CURTAIN_VERTICES.length / 3;
+  const cabinetVertexCount = CABINET_VERTICES.length / 3;
+
+  const lampVertexBuffer = uploadBuffer(
+    device,
+    LAMP_VERTICES,
+    GPUBufferUsage.VERTEX,
+  );
+  const lampVertexCount = LAMP_VERTICES.length / 3;
+
+  const rugVertexBuffer = uploadBuffer(
+    device,
+    RUG_VERTICES,
+    GPUBufferUsage.VERTEX,
+  );
+  const rugVertexCount = RUG_VERTICES.length / 3;
 
   // Seat vertices
   const seatVertexBuffer = uploadBuffer(
@@ -1339,22 +1391,6 @@ async function main() {
     GPUBufferUsage.VERTEX,
   );
   const seatVertexCount = SEAT_VERTICES.length / 3;
-
-  const projectorVertices = createProjectorVertices();
-  const projectorVertexBuffer = uploadBuffer(
-    device,
-    projectorVertices,
-    GPUBufferUsage.VERTEX,
-  );
-  const projectorVertexCount = projectorVertices.length / 3;
-
-  const projectorBeamVertices = createProjectorBeamVertices();
-  const projectorBeamVertexBuffer = uploadBuffer(
-    device,
-    projectorBeamVertices,
-    GPUBufferUsage.VERTEX,
-  );
-  const projectorBeamVertexCount = projectorBeamVertices.length / 5;
 
   // Poster vertex buffers (5 floats per vert: pos3 + uv2)
   const poster0VertexBuffer = uploadBuffer(
@@ -1412,44 +1448,62 @@ async function main() {
     new THREE.Vector3(0.0, 1.0, 0.0),
     TAPE_HOLD_YAW_OFFSET,
   );
-  const tapeRuntime = {
-    state: "unavailable",
-    targetable: false,
-    localVertices: null,
-    worldVertices: null,
-    vertexBuffer: null,
-    vertexCount: 0,
-    worldPosition: TAPE_MODEL_CONFIG.position.clone(),
-    worldQuaternion: tapeBaseQuaternion.clone(),
-    pickupAnchorLocal: new THREE.Vector3(0.0, 0.0, 0.0),
-  };
+  const tapeRuntimes = [];
   let playerModelVertexBuffer = null;
   let playerModelVertexCount = 0;
+  let tapeLabelLocalVertices = null;
 
   try {
     const tapeModelMesh = await loadModelMesh({
       loader: new GLTFLoader(),
       ...TAPE_MODEL_CONFIG,
     });
-    tapeRuntime.localVertices = tapeModelMesh.vertices;
-    tapeRuntime.worldVertices = bakeModelVertices(
-      tapeModelMesh.vertices,
-      tapeRuntime.worldPosition,
-      TAPE_MODEL_CONFIG.rotation,
+    tapeLabelLocalVertices = createTapeLabelLocalVertices(tapeModelMesh.bounds);
+    const pickupAnchorLocal = tapeModelMesh.bounds.getCenter(
+      new THREE.Vector3(),
     );
-    tapeRuntime.vertexBuffer = createWritableVertexBuffer(
-      device,
-      tapeRuntime.worldVertices,
-    );
-    tapeRuntime.vertexCount = tapeModelMesh.vertices.length / 3;
-    tapeRuntime.pickupAnchorLocal.copy(
-      tapeModelMesh.bounds.getCenter(new THREE.Vector3()),
-    );
-    tapeRuntime.state = "world";
+
+    for (const definition of TAPE_DEFINITIONS) {
+      const worldQuaternion = new THREE.Quaternion().setFromEuler(
+        definition.rotation,
+      );
+      const worldVertices = transformModelVertices(
+        tapeModelMesh.vertices,
+        definition.position,
+        worldQuaternion,
+      );
+      const labelWorldVertices = transformTexturedVertices(
+        tapeLabelLocalVertices,
+        definition.position,
+        worldQuaternion,
+      );
+      tapeRuntimes.push({
+        definition,
+        state: "world",
+        targetable: false,
+        localVertices: tapeModelMesh.vertices,
+        worldVertices,
+        vertexBuffer: createWritableVertexBuffer(device, worldVertices),
+        vertexCount: tapeModelMesh.vertices.length / 3,
+        worldPosition: definition.position.clone(),
+        worldQuaternion,
+        homePosition: definition.position.clone(),
+        homeQuaternion: worldQuaternion.clone(),
+        pickupAnchorLocal: pickupAnchorLocal.clone(),
+        labelLocalVertices: tapeLabelLocalVertices,
+        labelWorldVertices,
+        labelVertexBuffer: createWritableVertexBuffer(
+          device,
+          labelWorldVertices,
+        ),
+        labelTexture: createTapeLabelTexture(device, definition),
+        labelBindGroup: null,
+        labelVertexCount: tapeLabelLocalVertices.length / 5,
+      });
+    }
   } catch (error) {
     console.error("tape.glb load failed:", error);
     status(`tape.glb load failed: ${getErrorMessage(error)}`);
-    tapeRuntime.state = "load failed";
   }
 
   try {
@@ -1509,6 +1563,10 @@ async function main() {
     layout: videoPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: cameraBuffer } }],
   });
+  const screenOffCameraBindGroup = device.createBindGroup({
+    layout: screenOffPipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: cameraBuffer } }],
+  });
   const frameCameraBindGroup = device.createBindGroup({
     layout: framePipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: cameraBuffer } }],
@@ -1535,8 +1593,15 @@ async function main() {
       { binding: 1, resource: { buffer: roomLightBuffer } },
     ],
   });
-  const curtainCameraBindGroup = device.createBindGroup({
-    layout: curtainPipeline.getBindGroupLayout(0),
+  const cabinetCameraBindGroup = device.createBindGroup({
+    layout: cabinetPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const lampCameraBindGroup = device.createBindGroup({
+    layout: lampPipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: cameraBuffer } },
       { binding: 1, resource: { buffer: roomLightBuffer } },
@@ -1549,21 +1614,22 @@ async function main() {
       { binding: 1, resource: { buffer: roomLightBuffer } },
     ],
   });
-  const projectorLightBuffer = device.createBuffer({
-    size: 16,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-  const projectorLightValues = new Float32Array([0.0, 0.0, 0.0, 0.0]);
-  device.queue.writeBuffer(projectorLightBuffer, 0, projectorLightValues);
-  const projectorBeamBindGroup = device.createBindGroup({
-    layout: projectorBeamPipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: cameraBuffer } },
-      { binding: 1, resource: { buffer: projectorLightBuffer } },
-    ],
-  });
   const posterCameraBindGroup = device.createBindGroup({
     layout: posterPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const labelCameraBindGroup = device.createBindGroup({
+    layout: labelPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: cameraBuffer } },
+      { binding: 1, resource: { buffer: roomLightBuffer } },
+    ],
+  });
+  const tapeCameraBindGroup = device.createBindGroup({
+    layout: tapePipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: cameraBuffer } },
       { binding: 1, resource: { buffer: roomLightBuffer } },
@@ -1573,6 +1639,15 @@ async function main() {
     magFilter: "linear",
     minFilter: "linear",
   });
+  for (const tapeRuntime of tapeRuntimes) {
+    tapeRuntime.labelBindGroup = device.createBindGroup({
+      layout: labelPipeline.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: posterSampler },
+        { binding: 1, resource: tapeRuntime.labelTexture.createView() },
+      ],
+    });
+  }
   const posterBindGroup0 = device.createBindGroup({
     layout: posterPipeline.getBindGroupLayout(1),
     entries: [
@@ -1655,20 +1730,42 @@ async function main() {
   const toTape = new THREE.Vector3();
   const cameraBasisMatrix = new THREE.Matrix4();
 
+  function getHeldTape() {
+    return tapeRuntimes.find((runtime) => runtime.state === "held") ?? null;
+  }
+
+  function getInsertedTape() {
+    return tapeRuntimes.find((runtime) => runtime.state === "inserted") ?? null;
+  }
+
+  function getTargetedTape() {
+    return tapeRuntimes.find((runtime) => runtime.targetable) ?? null;
+  }
+
   function performTapeAction() {
-    if (tapeRuntime.state === "held" && vcrNearby) {
-      tapeRuntime.state = "inserted";
-      tapeRuntime.targetable = false;
+    const heldTape = getHeldTape();
+    const insertedTape = getInsertedTape();
+    const targetedTape = getTargetedTape();
+
+    if (heldTape && vcrNearby) {
+      heldTape.state = "inserted";
+      heldTape.targetable = false;
       tapeInserted = true;
 
-      if (tapeRuntime.worldVertices) {
-        tapeRuntime.worldVertices.fill(0);
+      if (heldTape.worldVertices) {
+        heldTape.worldVertices.fill(0);
         device.queue.writeBuffer(
-          tapeRuntime.vertexBuffer,
+          heldTape.vertexBuffer,
           0,
-          tapeRuntime.worldVertices,
+          heldTape.worldVertices,
         );
       }
+      heldTape.labelWorldVertices.fill(0);
+      device.queue.writeBuffer(
+        heldTape.labelVertexBuffer,
+        0,
+        heldTape.labelWorldVertices,
+      );
 
       const activeVid = getMountedVideoElement?.() ?? videoElement;
       if (activeVid instanceof HTMLVideoElement) {
@@ -1676,23 +1773,23 @@ async function main() {
       }
       const playPromise = changeVideoSource(
         videoElement,
-        TAPE_VIDEO_DATA.src,
-        TAPE_VIDEO_DATA.poster,
+        getTapeSrc(heldTape.definition.playbackId),
+        getTapePoster(heldTape.definition.playbackId),
       );
       if (playPromise) {
         playPromise.catch(() => {
           status(
-            `Tape inserted. Press Play to start ${TAPE_VIDEO_DATA.title}.`,
+            `Tape inserted. Press Play to start ${heldTape.definition.title}.`,
           );
         });
       }
       videoRenderEnabled = true;
-      status(`Now playing: ${TAPE_VIDEO_DATA.title}`);
+      status(`Now playing: ${heldTape.definition.title}`);
       return true;
     }
 
-    if (tapeRuntime.state === "inserted" && vcrNearby) {
-      tapeRuntime.state = "held";
+    if (insertedTape && vcrNearby) {
+      resetInsertedTapeToHeld(insertedTape);
       tapeInserted = false;
 
       videoElement.pause();
@@ -1702,7 +1799,7 @@ async function main() {
       return true;
     }
 
-    if (tapeRuntime.state === "held" && !vcrNearby) {
+    if (heldTape && !vcrNearby) {
       const dropForward = new THREE.Vector3(
         cameraForward.x,
         0.0,
@@ -1713,38 +1810,76 @@ async function main() {
         .addScaledVector(dropForward, TAPE_DROP_DISTANCE);
       dropPos.y = 0.0;
 
-      tapeRuntime.worldPosition.copy(dropPos);
-      tapeRuntime.worldQuaternion.copy(tapeBaseQuaternion);
+      heldTape.worldPosition.copy(dropPos);
+      heldTape.worldQuaternion.copy(tapeBaseQuaternion);
 
-      const dropVertices = bakeModelVertices(
-        tapeRuntime.localVertices,
-        tapeRuntime.worldPosition,
-        TAPE_MODEL_CONFIG.rotation,
+      const dropVertices = transformModelVertices(
+        heldTape.localVertices,
+        heldTape.worldPosition,
+        heldTape.worldQuaternion,
       );
-      tapeRuntime.worldVertices.set(dropVertices);
+      heldTape.worldVertices.set(dropVertices);
       device.queue.writeBuffer(
-        tapeRuntime.vertexBuffer,
+        heldTape.vertexBuffer,
         0,
-        tapeRuntime.worldVertices,
+        heldTape.worldVertices,
+      );
+      transformTexturedVertices(
+        heldTape.labelLocalVertices,
+        heldTape.worldPosition,
+        heldTape.worldQuaternion,
+        heldTape.labelWorldVertices,
+      );
+      device.queue.writeBuffer(
+        heldTape.labelVertexBuffer,
+        0,
+        heldTape.labelWorldVertices,
       );
 
-      tapeRuntime.state = "world";
-      tapeRuntime.targetable = false;
+      heldTape.state = "world";
+      heldTape.targetable = false;
       return true;
     }
 
-    if (tapeRuntime.state === "world" && tapeRuntime.targetable) {
-      tapeRuntime.state = "held";
-      tapeRuntime.targetable = false;
+    if (targetedTape) {
+      targetedTape.state = "held";
+      targetedTape.targetable = false;
       return true;
     }
 
-    if (tapeRuntime.state === "world") {
+    if (tapeRuntimes.some((runtime) => runtime.state === "world")) {
       tapePickupQueued = true;
       return true;
     }
 
     return false;
+  }
+
+  function resetInsertedTapeToHeld(insertedTape) {
+    insertedTape.state = "held";
+    insertedTape.targetable = false;
+    transformModelVertices(
+      insertedTape.localVertices,
+      insertedTape.worldPosition,
+      insertedTape.worldQuaternion,
+      insertedTape.worldVertices,
+    );
+    device.queue.writeBuffer(
+      insertedTape.vertexBuffer,
+      0,
+      insertedTape.worldVertices,
+    );
+    transformTexturedVertices(
+      insertedTape.labelLocalVertices,
+      insertedTape.worldPosition,
+      insertedTape.worldQuaternion,
+      insertedTape.labelWorldVertices,
+    );
+    device.queue.writeBuffer(
+      insertedTape.labelVertexBuffer,
+      0,
+      insertedTape.labelWorldVertices,
+    );
   }
 
   function resize() {
@@ -1841,15 +1976,6 @@ async function main() {
         videoElement.playsInline = true;
         videoElement.loop = true;
       }
-      const projectorActive =
-        tapeInserted &&
-        videoElement.readyState >= 2 &&
-        videoElement.videoWidth > 0 &&
-        videoElement.videoHeight > 0 &&
-        !videoElement.paused;
-      projectorLightValues[0] = projectorActive ? 1.0 : 0.0;
-      device.queue.writeBuffer(projectorLightBuffer, 0, projectorLightValues);
-
       // -- VCR proximity detection --
       toVcr.subVectors(VCR_POSITION, cameraPosition);
       const vcrDistance = toVcr.length();
@@ -1867,34 +1993,47 @@ async function main() {
       }
       tapeActionQueued = false;
 
-      // -- Tape pickup targeting (when tape is on the ground) --
-      tapeRuntime.targetable = false;
-      if (tapeRuntime.state === "world") {
+      // -- Tape pickup targeting --
+      let bestTape = null;
+      let bestTapeScore = -Infinity;
+      for (const runtime of tapeRuntimes) {
+        runtime.targetable = false;
+        if (runtime.state !== "world") continue;
         tapePickupPoint
-          .copy(tapeRuntime.pickupAnchorLocal)
-          .applyQuaternion(tapeRuntime.worldQuaternion)
-          .add(tapeRuntime.worldPosition);
+          .copy(runtime.pickupAnchorLocal)
+          .applyQuaternion(runtime.worldQuaternion)
+          .add(runtime.worldPosition);
         toTape.subVectors(tapePickupPoint, cameraPosition);
         const tapeDistance = toTape.length();
-        if (tapeDistance > 0.0001) {
-          const tapeFacing = toTape.normalize().dot(cameraForward);
-          tapeRuntime.targetable =
-            tapeDistance <= TAPE_PICKUP_RADIUS &&
-            tapeFacing >= TAPE_PICKUP_DOT_THRESHOLD;
+        if (tapeDistance <= 0.0001) continue;
+        const tapeFacing = toTape.normalize().dot(cameraForward);
+        if (
+          tapeDistance <= TAPE_PICKUP_RADIUS &&
+          tapeFacing >= TAPE_PICKUP_DOT_THRESHOLD
+        ) {
+          const score = tapeFacing * 2.0 - tapeDistance * 0.12;
+          if (score > bestTapeScore) {
+            bestTapeScore = score;
+            bestTape = runtime;
+          }
         }
-        if (tapePickupQueued && tapeRuntime.targetable) {
-          tapeRuntime.state = "held";
-          tapeRuntime.targetable = false;
-        }
+      }
+      if (bestTape) {
+        bestTape.targetable = true;
+      }
+      if (tapePickupQueued && bestTape) {
+        bestTape.state = "held";
+        bestTape.targetable = false;
       }
       tapePickupQueued = false;
 
       // -- Tape held: attach to hand --
+      const heldTape = getHeldTape();
       if (
-        tapeRuntime.state === "held" &&
-        tapeRuntime.localVertices &&
-        tapeRuntime.worldVertices &&
-        tapeRuntime.vertexBuffer
+        heldTape &&
+        heldTape.localVertices &&
+        heldTape.worldVertices &&
+        heldTape.vertexBuffer
       ) {
         tapeHeldPosition
           .copy(cameraPosition)
@@ -1909,47 +2048,62 @@ async function main() {
           .multiply(tapeHeldYawQuaternion)
           .multiply(tapeBaseQuaternion);
         transformModelVertices(
-          tapeRuntime.localVertices,
+          heldTape.localVertices,
           tapeHeldPosition,
           tapeHeldQuaternion,
-          tapeRuntime.worldVertices,
+          heldTape.worldVertices,
         );
         device.queue.writeBuffer(
-          tapeRuntime.vertexBuffer,
+          heldTape.vertexBuffer,
           0,
-          tapeRuntime.worldVertices,
+          heldTape.worldVertices,
+        );
+        transformTexturedVertices(
+          heldTape.labelLocalVertices,
+          tapeHeldPosition,
+          tapeHeldQuaternion,
+          heldTape.labelWorldVertices,
+        );
+        device.queue.writeBuffer(
+          heldTape.labelVertexBuffer,
+          0,
+          heldTape.labelWorldVertices,
         );
       }
 
       // -- Status messages --
-      if (tapeRuntime.state === "inserted") {
+      const insertedTape = getInsertedTape();
+      const targetedTape = getTargetedTape();
+      if (insertedTape) {
         if (vcrNearby) {
           setContextStatus("Press F to eject tape.");
         } else {
-          setContextStatus(`Playing: ${TAPE_VIDEO_DATA.title}`);
+          setContextStatus(`Playing: ${insertedTape.definition.title}`);
         }
-      } else if (tapeRuntime.state === "held") {
+      } else if (heldTape) {
         if (vcrNearby) {
           setContextStatus("Press F to insert tape into player.");
         } else {
-          setContextStatus("Tape in hand. Press F to drop.");
+          setContextStatus(
+            `Holding: ${heldTape.definition.title}. Press F to drop.`,
+          );
         }
-      } else if (tapeRuntime.targetable) {
-        setContextStatus("Press F to pick up tape.");
+      } else if (targetedTape) {
+        setContextStatus(
+          `Press F to pick up ${targetedTape.definition.title}.`,
+        );
       } else {
         setContextStatus("");
       }
 
       if (crosshairEl) {
-        crosshairEl.dataset.state =
-          tapeRuntime.state === "held"
+        crosshairEl.dataset.state = heldTape
+          ? "held"
+          : insertedTape
             ? "held"
-            : tapeRuntime.state === "inserted"
-              ? "held"
-              : tapeRuntime.targetable ||
-                  (vcrNearby && tapeRuntime.state === "held")
-                ? "targetable"
-                : "idle";
+            : targetedTape || (vcrNearby && heldTape)
+              ? "targetable"
+              : "idle";
       }
 
       const encoder = device.createCommandEncoder();
@@ -1978,19 +2132,28 @@ async function main() {
       pass.setVertexBuffer(0, floorVertexBuffer);
       pass.draw(floorVertexCount, 1, 0, 0);
 
-      // Theater room: walls + ceiling
+      // Room shell
       pass.setPipeline(wallPipeline);
       pass.setBindGroup(0, wallCameraBindGroup);
       pass.setVertexBuffer(0, wallVertexBuffer);
       pass.draw(wallVertexCount, 1, 0, 0);
 
-      // Curtains
-      pass.setPipeline(curtainPipeline);
-      pass.setBindGroup(0, curtainCameraBindGroup);
-      pass.setVertexBuffer(0, curtainVertexBuffer);
-      pass.draw(curtainVertexCount, 1, 0, 0);
+      pass.setPipeline(cabinetPipeline);
+      pass.setBindGroup(0, cabinetCameraBindGroup);
+      pass.setVertexBuffer(0, cabinetVertexBuffer);
+      pass.draw(cabinetVertexCount, 1, 0, 0);
 
-      // Theater seats
+      pass.setPipeline(lampPipeline);
+      pass.setBindGroup(0, lampCameraBindGroup);
+      pass.setVertexBuffer(0, lampVertexBuffer);
+      pass.draw(lampVertexCount, 1, 0, 0);
+
+      pass.setPipeline(seatPipeline);
+      pass.setBindGroup(0, seatCameraBindGroup);
+      pass.setVertexBuffer(0, rugVertexBuffer);
+      pass.draw(rugVertexCount, 1, 0, 0);
+
+      // Living-room couch
       pass.setPipeline(seatPipeline);
       pass.setBindGroup(0, seatCameraBindGroup);
       pass.setVertexBuffer(0, seatVertexBuffer);
@@ -2030,9 +2193,10 @@ async function main() {
       pass.setVertexBuffer(0, frameVertexBuffer);
       pass.draw(frameVertexCount, 1, 0, 0);
 
-      if (tapeRuntime.vertexBuffer && tapeRuntime.vertexCount > 0) {
-        pass.setPipeline(boomboxPipeline);
-        pass.setBindGroup(0, boomboxCameraBindGroup);
+      for (const tapeRuntime of tapeRuntimes) {
+        if (!tapeRuntime.vertexBuffer || tapeRuntime.vertexCount <= 0) continue;
+        pass.setPipeline(tapePipeline);
+        pass.setBindGroup(0, tapeCameraBindGroup);
         pass.setVertexBuffer(0, tapeRuntime.vertexBuffer);
         pass.draw(tapeRuntime.vertexCount, 1, 0, 0);
       }
@@ -2044,10 +2208,14 @@ async function main() {
         pass.draw(playerModelVertexCount, 1, 0, 0);
       }
 
-      pass.setPipeline(boomboxPipeline);
-      pass.setBindGroup(0, boomboxCameraBindGroup);
-      pass.setVertexBuffer(0, projectorVertexBuffer);
-      pass.draw(projectorVertexCount, 1, 0, 0);
+      pass.setPipeline(labelPipeline);
+      pass.setBindGroup(0, labelCameraBindGroup);
+      for (const tapeRuntime of tapeRuntimes) {
+        if (!tapeRuntime.labelBindGroup) continue;
+        pass.setBindGroup(1, tapeRuntime.labelBindGroup);
+        pass.setVertexBuffer(0, tapeRuntime.labelVertexBuffer);
+        pass.draw(tapeRuntime.labelVertexCount, 1, 0, 0);
+      }
 
       pass.setPipeline(archTextPipeline);
       pass.setBindGroup(0, archTextCameraBindGroup);
@@ -2055,14 +2223,22 @@ async function main() {
       pass.setVertexBuffer(0, archTextVertexBuffer);
       pass.draw(archTextVertexCount, 1, 0, 0);
 
-      if (
+      const shouldRenderVideo =
         tapeInserted &&
         videoRenderEnabled &&
         videoElement.readyState >= 2 &&
         videoElement.videoWidth > 0 &&
         videoElement.videoHeight > 0 &&
-        !videoElement.paused
-      ) {
+        !videoElement.paused;
+
+      if (!shouldRenderVideo) {
+        pass.setPipeline(screenOffPipeline);
+        pass.setBindGroup(0, screenOffCameraBindGroup);
+        pass.setVertexBuffer(0, videoVertexBuffer);
+        pass.draw(videoVertexCount, 1, 0, 0);
+      }
+
+      if (shouldRenderVideo) {
         try {
           const externalTexture = device.importExternalTexture({
             source: videoElement,
